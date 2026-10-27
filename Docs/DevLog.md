@@ -61,3 +61,10 @@
 - **处理**：配置全局与仓库级 `user.name = ZovoeXuan`、`user.email = asd1358080254@gmail.com`；用 `git filter-branch --env-filter` 重写全部 5 个提交的作者与提交者。
 - **校验**：改写前后 HEAD 树哈希相同（`04d0b603…`），确认文件内容零改动，仅元数据变更；工作区干净，1213 个受跟踪文件不变；仓库原有 `refs/original` 备份 ref 已清理。
 - **注**：改写发生在配置远程仓库之前，因此无外部影响；此后新提交自动使用新身份。D1/D3/D4/D5 日志中「Git 身份未配置」的遗留项至此全部关闭。
+
+## 维护 · 2026-10-27 · 提交邮箱改为 GitHub 私有地址
+
+- **原因**：提交历史里的真实 Gmail 会公开，且 GitHub 的「Keep my email addresses private」开关不影响已产生的历史提交，必须直接改写提交邮箱才能隐藏。
+- **处理**：全局与仓库级 `user.email` 改为 `310389188+ZovoeXuan@users.noreply.github.com`；`user.name` 保持 `ZovoeXuan`；用 `git filter-branch --env-filter` 重写全部 6 个提交的作者与提交者邮箱。
+- **校验**：改写前后 HEAD 树哈希一致（`cae58aa9…`），内容零改动；工作区干净；备份 ref 已清理。
+- **说明**：GitHub 按邮箱关联账号，私有地址同样计入贡献图；如需回到真实邮箱，改两处 config 后再跑一次同样的命令即可。
