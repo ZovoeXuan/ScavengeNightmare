@@ -13,6 +13,8 @@ GameObject:
   - component: {fileID: 3264882582374165672}
   - component: {fileID: 3030049407174122371}
   - component: {fileID: 1328489718064214101}
+  - component: {fileID: 2665373056805183902}
+  - component: {fileID: 1463503638071107648}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -75,7 +77,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Mirror::Mirror.NetworkIdentity
   sceneId: 0
-  _assetId: 1675433747
+  _assetId: 0
   serverOnly: 0
   visibility: 0
   hasSpawned: 0
@@ -138,6 +140,39 @@ MonoBehaviour:
   lookSensitivity: 0.12
   pitchLimit: 85
   playerCamera: {fileID: 0}
+--- !u!114 &2665373056805183902
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 695582084772269870}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4fa9b2326baf664ba10911158c02ac2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.GrabController
+  viewCamera: {fileID: 0}
+  motor: {fileID: 0}
+  grabRange: 3.2
+  grabMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  followStiffness: 16
+--- !u!114 &1463503638071107648
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 695582084772269870}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ab506dd07912c5b4d9784dea55516e7c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.UI.GrabHUD
+  grab: {fileID: 0}
+  showMass: 1
 --- !u!1 &2376511499117349623
 GameObject:
   m_ObjectHideFlags: 0

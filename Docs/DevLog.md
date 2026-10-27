@@ -32,3 +32,14 @@
   3. **移动参数仍硬编码在 `PlayerMotor` 字段**：D5 迁 ScriptableObject。
   4. **`D3AutoRunner` 是测试外壳**：正式发布前移除或加 `#if !UNITY_EDITOR` 开关。
   5. 本机 Git 仍未配置身份，D3 继续使用临时身份 `Qoder <qoder@local>`。
+
+## D4 · 2026-10-27 · 物理抓取 v0
+
+- **做了什么**：新增 `PropPhysicsProfile`（质量 / 摩擦 / 弹性 / 抓握加速度 / 投掷冲量）、4 个物件物理档与对应 prefab（罐头 2kg / 纸箱 9kg / 圆桶 22kg / 雕像 42kg）；`GrabbableProp` 负责应用物理档 + 准星高亮 + 速度兜底；`GrabController` 实现「射线拾取 → 速度控制跟随（不 SetParent）→ 松手投掷继承玩家速度 → 超距强制脱手」；负重按质量降低移动速度；`GrabHUD` 提供准星与重量提示；场景加 `PropPen`（8 个可抓物件）与 `ThrowWall`；新增 `Docs/Grab.md`。
+- **验收**：通过。`D4_SETUP_OK profiles=4 prefabs=4` / `D4_VALIDATE_OK profiles=4 props=8 wall=True`；构建 `BUILD_OK`；`-d4test` 自动化：`D4_GRAB_OK distance=1.70/1.60`、`D4_FOLLOW_OK propMoved=1.45`、`D4_THROW_OK speed=3.18`（= 70/22，验证冲量÷质量）、`D4_TUNNEL_OK closestSide=-0.40`（恰为墙半厚+胶囊半径，30 m/s 未穿模）。
+- **遗留问题**：
+  1. **手感未经人眼验证**：重量感 / 力度感 / 负重体感只能在真实窗口里判断，排在 D7 朋友局；D5 先按「轻快 / 稳重 / 沉重」出三套参数。
+  2. **物件未联网**：`GrabbableProp` 仍是纯本地物理，无 NetworkIdentity 与所有权切换。两人抓同一件会各算各的。排 D6 末或 D9。
+  3. **投掷无蓄力、无镜头反馈**：D5 / D10 再补。
+  4. `GrabController` 与 `NetDebugHUD` / `LobbyDebugUI` 同属临时 UI/调试件，D32 一并替换。
+  5. 本机 Git 身份仍待配置。

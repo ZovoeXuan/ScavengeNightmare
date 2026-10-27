@@ -41,6 +41,7 @@ namespace ScavengeNightmare.Networking
         private bool automationOverride;
         private Vector2 automationMove;
         private bool automationSprint;
+        private float carrySpeedMultiplier = 1f;
 
         /// <summary>
         /// 自动化验证用输入注入（无键鼠的批处理环境下驱动移动），正式玩法不调用。
@@ -199,7 +200,7 @@ namespace ScavengeNightmare.Networking
         private void ApplyMove()
         {
             Vector3 desired = transform.right * moveInput.x + transform.forward * moveInput.y;
-            float speed = sprintHeld ? sprintSpeed : walkSpeed;
+            float speed = (sprintHeld ? sprintSpeed : walkSpeed) * carrySpeedMultiplier;
             planarVelocity = Vector3.MoveTowards(planarVelocity, desired * speed, acceleration * Time.deltaTime);
 
             if (controller.isGrounded)
@@ -228,5 +229,24 @@ namespace ScavengeNightmare.Networking
 
         /// <summary>供 HUD / 自动化验证读取的当前平面速度（m/s）。</summary>
         public float CurrentPlanarSpeed => planarVelocity.magnitude;
+
+        /// <summary>
+        /// 完整速度（含垂直分量），投掷时用于继承玩家动量。
+        /// 贴地时不含那个 -2 的「压地速度」，否则每次平a投掷都会被额外往下压。
+        /// </summary>
+        public Vector3 CurrentVelocity
+        {
+            get
+            {
+                bool grounded = controller != null && controller.isGrounded;
+                return planarVelocity + Vector3.up * (grounded ? 0f : verticalVelocity);
+            }
+        }
+
+        /// <summary>负重减速：D1 冻结的「跑会被拖累」，系数由物件物理档给出。</summary>
+        public void SetCarryMass(float kg)
+        {
+            carrySpeedMultiplier = Mathf.Clamp(1f - kg / 70f, 0.45f, 1f);
+        }
     }
 }
