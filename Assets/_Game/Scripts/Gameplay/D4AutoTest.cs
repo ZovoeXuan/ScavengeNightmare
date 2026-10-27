@@ -1,6 +1,7 @@
 using System.Collections;
 using Mirror;
 using ScavengeNightmare.Networking;
+using ScavengeNightmare.UI;
 using UnityEngine;
 
 namespace ScavengeNightmare.Gameplay
@@ -87,6 +88,19 @@ namespace ScavengeNightmare.Gameplay
             grab.SetInputEnabled(false);
             motor.ApplyAutomationMove(Vector2.zero, false);
 
+            // D5：按命令行选择手感方案，用于同一用例对比三套参数。
+            string feelId = ReadValue("-feel=");
+            FeelSwitchHUD feelHud = player.GetComponent<FeelSwitchHUD>();
+            if (!string.IsNullOrEmpty(feelId))
+            {
+                if (feelHud == null || !feelHud.SelectById(feelId))
+                {
+                    Debug.LogWarning($"[D5] 方案切换失败 requested={feelId}");
+                }
+            }
+
+            Debug.Log($"[D5] D5_FEEL active={(feelHud != null ? feelHud.CurrentId : "none")} requested={(string.IsNullOrEmpty(feelId) ? "-" : feelId)}");
+
             BuildRig(player.transform);
 
             // ---- 1. 抓取 ----
@@ -124,8 +138,11 @@ namespace ScavengeNightmare.Gameplay
             grab.Release(true);
             yield return null;
             float throwSpeed = prop.Body.linearVelocity.magnitude;
-            bool throwOk = throwSpeed > 3f;
-            Debug.Log($"[D4] D4_THROW_OK ok={throwOk} speed={throwSpeed:F2} playerVelocity={velBefore.magnitude:F2} mass={prop.Mass:F1}kg");
+            float expectedSpeed = FeelSettings.ThrowSpeed(prop.Profile);
+            // 判定标准不是「够不够快」，而是「是否等于当前方案的期望出手速度」——
+            // 沉重方案本来就该扔得慢，用绝对阈值判会误报。
+            bool throwOk = throwSpeed > 1f && Mathf.Abs(throwSpeed - expectedSpeed) < 0.8f;
+            Debug.Log($"[D4] D4_THROW_OK ok={throwOk} speed={throwSpeed:F2} expected={FeelSettings.ThrowSpeed(prop.Profile):F2} playerVelocity={velBefore.magnitude:F2} mass={prop.Mass:F1}kg");
 
             yield return new WaitForSeconds(1.2f);
 
@@ -228,6 +245,19 @@ namespace ScavengeNightmare.Gameplay
             }
 
             return false;
+        }
+
+        private static string ReadValue(string prefix)
+        {
+            foreach (string a in System.Environment.GetCommandLineArgs())
+            {
+                if (a.StartsWith(prefix, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return a.Substring(prefix.Length);
+                }
+            }
+
+            return null;
         }
     }
 }

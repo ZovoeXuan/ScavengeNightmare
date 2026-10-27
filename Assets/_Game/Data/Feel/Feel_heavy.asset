@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 47aefa3d1bdf52d47a8bfab159a4fc36, type: 3}
+  m_Name: Feel_heavy
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.FeelScheme
+  schemeId: heavy
+  displayName: "\u6C89\u91CD"
+  description: "\u8DDF\u624B\u6EDE\u540E\u660E\u663E\u3001\u6254\u4E0D\u8FDC\u3001\u62B1\u91CD\u7269\u660E\u663E\u6389\u901F\uFF0C\u4E00\u5207\u90FD\u5F88\u8D39\u52B2\u3002\u9002\u5408\u653E\u5927\u6323\u624E\u611F\u3002"
+  comedyNotes: "\u91CD\u7269\u62D6\u4E0D\u52A8\u3001\u624B\u6ED1\u7838\u811A\u3001\u4E0B\u697C\u68AF\u88AB\u8D27\u5E26\u7740\u6EDA\u2014\u2014\u6323\u624E\u578B\u8EAB\u4F53\u559C\u5267"
+  grabAccelerationScale: 0.55
+  grabMaxSpeedScale: 0.65
+  followStiffnessScale: 0.6
+  holdDistanceScale: 1.1
+  throwImpulseScale: 0.6
+  throwSpinScale: 0.6
+  playerSpeedScale: 0.85
+  carryDivisor: 45

@@ -108,7 +108,7 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
-            Vector3 target = viewCamera.transform.position + viewCamera.transform.forward * profile.holdDistance;
+            Vector3 target = viewCamera.transform.position + viewCamera.transform.forward * FeelSettings.HoldDistance(profile.holdDistance);
             Vector3 delta = target - body.worldCenterOfMass;
 
             if (delta.magnitude > profile.breakDistance)
@@ -118,16 +118,17 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
-            Vector3 desiredVelocity = Vector3.ClampMagnitude(delta * followStiffness, profile.grabMaxSpeed);
+            float maxSpeed = FeelSettings.GrabMaxSpeed(profile.grabMaxSpeed);
+            Vector3 desiredVelocity = Vector3.ClampMagnitude(delta * FeelSettings.FollowStiffness(followStiffness), maxSpeed);
             body.linearVelocity = Vector3.MoveTowards(
                 body.linearVelocity,
                 desiredVelocity,
-                profile.grabAcceleration * Time.fixedDeltaTime);
+                FeelSettings.GrabAcceleration(profile.grabAcceleration) * Time.fixedDeltaTime);
 
             body.angularVelocity = Vector3.MoveTowards(body.angularVelocity, Vector3.zero, 18f * Time.fixedDeltaTime);
 
             // 兜底：任何情况下都不让被抓物件飞出物理合理区间。
-            held.ClampSpeed(profile.grabMaxSpeed * 1.5f);
+            held.ClampSpeed(maxSpeed * 1.5f);
         }
 
         private GrabbableProp Probe()
@@ -217,13 +218,13 @@ namespace ScavengeNightmare.Gameplay
             }
 
             Vector3 playerVelocity = motor != null ? motor.CurrentVelocity : Vector3.zero;
-            Vector3 velocity = playerVelocity + viewCamera.transform.forward * profile.ThrowSpeed;
+            Vector3 velocity = playerVelocity + viewCamera.transform.forward * FeelSettings.ThrowSpeed(profile);
 
             // 玩家自身速度 + 出手速度的合成值也要设上限，避免贴脸扔出穿模。
             float limit = profile.maxThrowSpeed + playerVelocity.magnitude;
             body.WakeUp();
             body.linearVelocity = Vector3.ClampMagnitude(velocity, limit);
-            body.angularVelocity = Random.onUnitSphere * profile.throwSpin;
+            body.angularVelocity = Random.onUnitSphere * FeelSettings.ThrowSpin(profile.throwSpin);
         }
 
         /// <summary>自动化验证用：关掉键鼠输入，改由测试脚本直接调用 TryGrab / Release。</summary>

@@ -14,14 +14,17 @@ namespace ScavengeNightmare.Networking
     [RequireComponent(typeof(NetworkIdentity))]
     public sealed class PlayerMotor : NetworkBehaviour
     {
-        [Header("移动（D5 起迁到 ScriptableObject）")]
+        [Header("数据表（D5 起优先读这里，留空则用下面的默认值）")]
+        [SerializeField] private PlayerMoveSettings settings;
+
+        [Header("移动默认值（settings 为空时生效）")]
         [SerializeField] private float walkSpeed = 3.2f;
         [SerializeField] private float sprintSpeed = 5.0f;
         [SerializeField] private float jumpSpeed = 4.2f;
         [SerializeField] private float gravity = -18f;
         [SerializeField] private float acceleration = 24f;
 
-        [Header("视角")]
+        [Header("视角默认值（settings 为空时生效）")]
         [SerializeField] private float lookSensitivity = 0.12f;
         [SerializeField] private float pitchLimit = 85f;
 
@@ -62,6 +65,7 @@ namespace ScavengeNightmare.Networking
 
         private void Awake()
         {
+            ApplySettings();
             controller = GetComponent<CharacterController>();
             if (playerCamera == null)
             {
@@ -73,6 +77,22 @@ namespace ScavengeNightmare.Networking
             {
                 playerCamera.gameObject.SetActive(false);
             }
+        }
+
+        /// <summary>把数据表的数值覆盖到字段上，避免每帧分支判断。</summary>
+        private void ApplySettings()
+        {
+            if (settings == null)
+            {
+                return;
+            }
+
+            walkSpeed = settings.walkSpeed;
+            sprintSpeed = settings.sprintSpeed;
+            jumpSpeed = settings.jumpSpeed;
+            gravity = settings.gravity;
+            acceleration = settings.acceleration;
+            lookSensitivity = settings.lookSensitivity;
         }
 
         public override void OnStartLocalPlayer()
@@ -201,6 +221,7 @@ namespace ScavengeNightmare.Networking
         {
             Vector3 desired = transform.right * moveInput.x + transform.forward * moveInput.y;
             float speed = (sprintHeld ? sprintSpeed : walkSpeed) * carrySpeedMultiplier;
+            speed = ScavengeNightmare.Gameplay.FeelSettings.PlayerSpeed(speed);
             planarVelocity = Vector3.MoveTowards(planarVelocity, desired * speed, acceleration * Time.deltaTime);
 
             if (controller.isGrounded)
@@ -243,10 +264,10 @@ namespace ScavengeNightmare.Networking
             }
         }
 
-        /// <summary>负重减速：D1 冻结的「跑会被拖累」，系数由物件物理档给出。</summary>
+        /// <summary>负重减速：D1 冻结的「跑会被拖累」，系数由当前手感方案决定。</summary>
         public void SetCarryMass(float kg)
         {
-            carrySpeedMultiplier = Mathf.Clamp(1f - kg / 70f, 0.45f, 1f);
+            carrySpeedMultiplier = ScavengeNightmare.Gameplay.FeelSettings.CarryMultiplier(kg);
         }
     }
 }

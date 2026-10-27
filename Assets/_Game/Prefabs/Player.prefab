@@ -15,6 +15,7 @@ GameObject:
   - component: {fileID: 1328489718064214101}
   - component: {fileID: 2665373056805183902}
   - component: {fileID: 1463503638071107648}
+  - component: {fileID: 5846211142032120334}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -132,6 +133,7 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  settings: {fileID: 11400000, guid: 7885d3d5b8ac0004f9232a0ea3d26374, type: 2}
   walkSpeed: 3.2
   sprintSpeed: 5
   jumpSpeed: 4.2
@@ -173,6 +175,25 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.UI.GrabHUD
   grab: {fileID: 0}
   showMass: 1
+--- !u!114 &5846211142032120334
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 695582084772269870}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fa59811ac5a12124ca1ca41166a450e6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.UI.FeelSwitchHUD
+  schemes:
+  - {fileID: 11400000, guid: 6652271c08d1d3944828d24671eab8b9, type: 2}
+  - {fileID: 11400000, guid: eaa00f2c8b176504596ff08b75bb9f32, type: 2}
+  - {fileID: 11400000, guid: 5d5517a6e9573e544a2598c7c69cff1c, type: 2}
+  defaultIndex: 1
+  localGate: {fileID: 2665373056805183902}
+  showPanel: 1
 --- !u!1 &2376511499117349623
 GameObject:
   m_ObjectHideFlags: 0
