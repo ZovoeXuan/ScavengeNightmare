@@ -251,7 +251,9 @@ namespace ScavengeNightmare.EditorTools
             SerializedProperty index = so.FindProperty("defaultIndex");
             if (index != null)
             {
-                index.intValue = 1; // 稳重
+                // 2026-10-27 实测：真人试玩后选定「轻快」为主方案（最爽、重量差仍可辨、
+                // 沉重读作好笑而非恶心）。D7 朋友局用它做基线，对照组用 heavy 而非 solid。
+                index.intValue = 0;
             }
 
             SerializedProperty gate = so.FindProperty("localGate");

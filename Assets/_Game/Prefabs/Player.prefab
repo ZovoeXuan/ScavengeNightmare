@@ -191,7 +191,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 6652271c08d1d3944828d24671eab8b9, type: 2}
   - {fileID: 11400000, guid: eaa00f2c8b176504596ff08b75bb9f32, type: 2}
   - {fileID: 11400000, guid: 5d5517a6e9573e544a2598c7c69cff1c, type: 2}
-  defaultIndex: 1
+  defaultIndex: 0
   localGate: {fileID: 2665373056805183902}
   showPanel: 1
 --- !u!1 &2376511499117349623
