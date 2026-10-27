@@ -2,7 +2,9 @@
 
 1-4 人合作物理拾荒微恐喜剧，Steam PC 买断制。一局 10-20 分钟：进图 → 拾荒 → 被追 → 撤离 → 结算。
 
-> 当前状态：**D2 Steam 大厅完成**（2026-10-27）。工程可构建，Steam 初始化 / 创建 4 人好友大厅 / 邀请 / 离开已打通；双客户端好友邀请待人工验收。
+> 当前状态：**D3 联机骨架完成**（2026-10-27）。Mirror + KcpTransport 已接入，4 客户端并行连接与位置同步通过自动化验证；下一步 D4 物理抓取。
+>
+> 里程碑：D1 工程脚手架 ✓ / D2 Steam 大厅 ✓（含人工验收）/ D3 联机骨架 ✓
 
 ## 引擎与版本
 
@@ -24,13 +26,15 @@
 game/
 ├─ Assets/
 │  ├─ Plugins/
-│  │  └─ Facepunch.Steamworks/  # Steamworks 2.5.2 托管 DLL + steam_api64.dll
+│  │  ├─ Facepunch.Steamworks/  # Steamworks 2.5.2 托管 DLL + steam_api64.dll
+│  │  └─ Mirror/               # Mirror v96.11.3（含 KcpTransport，第三方代码勿改）
 │  ├─ Settings/              # URP 管线、Renderer、Volume Profile（模板自带，勿删）
 │  ├─ InputSystem_Actions    # 输入资产（模板自带）
 │  └─ _Game/
 │     ├─ Scripts/            # 运行时代码（Editor/ 放编辑器脚本）
-│     │  ├─ Networking/      # SteamLobbyService
-│     │  └─ UI/              # LobbyDebugUI（D2 临时面板）
+│     │  ├─ Networking/      # SteamLobbyService / PlayerMotor / D3AutoRunner
+│     │  └─ UI/              # LobbyDebugUI（D2）/ NetDebugHUD（D3，均临时）
+│     ├─ Prefabs/            # Player.prefab
 │     ├─ Scenes/             # Main.unity 为唯一启动场景
 │     ├─ Data/               # ScriptableObject / JSON 数值表
 │     ├─ Art/                # 模型、贴图、材质
@@ -39,25 +43,26 @@ game/
 ├─ Packages/                 # 包依赖（manifest.json / packages-lock.json）
 ├─ ProjectSettings/          # 工程设置（GraphicsSettings 已指向 PC_RPAsset）
 ├─ Logs/                     # 本地日志（不入库）
-└─ Docs/                     # 开发日志与验收记录
+└─ Docs/                     # 开发日志与验收记录（DevLog / SteamLobby / Networking）
 ```
 
 ## 打开方式
 
 1. Unity Hub → Add → 选择 `D:\drlj\game`，用 **6000.3.27f1** 打开。
 2. 首次打开等待包导入完成；打开 `Assets/_Game/Scenes/Main.unity`。
-3. 直接 Play 应看到空场景（Main Camera + Directional Light）。
+3. 直接 Play 应看到地面 + 左上角联机面板；点「Host」即可单机进图，点「Client」连接 127.0.0.1 或局域网 IP。
+4. 联机细节与多开自动化参数见 `Docs/Networking.md`。
 
 命令行验证（无需 GUI）：
 
 ```bat
 "D:\Unity\6000.3.27f1\Editor\Unity.exe" -batchmode -quit ^
   -projectPath "D:\drlj\game" ^
-  -executeMethod D1ProjectSetup.Validate ^
-  -logFile "D:\drlj\game\Logs\d1_validate.log"
+  -executeMethod ScavengeNightmare.EditorTools.D3SceneSetup.Validate ^
+  -logFile "D:\drlj\game\Logs\d3_validate.log"
 ```
 
-日志出现 `D1_VALIDATE_OK pipeline=PC_RPAsset` 即通过。
+日志出现 `D3_VALIDATE_OK transport=kcp maxConnections=4 spawnPoints=4` 即通过。工程脚手架的老校验入口 `D1ProjectSetup.Validate` 仍可用。
 
 ## 版本管理
 
