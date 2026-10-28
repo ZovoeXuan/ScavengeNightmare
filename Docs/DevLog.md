@@ -177,3 +177,13 @@
 - **顺手清理**：`Builds/Windows/PlaytestLogs/` 里 26 个 CSV 全是我自动化测试的产物，已移入 `_autotest_archive/`，避免与将来真人实测数据混淆。
 - **延迟测试两次假通过（记下来）**：① 只改 `nm.transport` 不改 `Transport.active`（它在 `NetworkManager.Awake` 就已绑定），注入了 200ms 却测出 `rtt=24ms`；② 重量探针首版把玩家挪到物件旁而不改物件位置，服务端持物目标点太远，`breakDistance` 首帧就判脱手，测出 `throw=0 carry=0`。两处都是「看起来在测、其实没测到」。
 - **遗留**：延迟只测 200ms 一档（未测 400ms POOR）；4 人测试是同机 4 进程非跨机；重量感的手感部分无法自动化。
+
+## D12 · 2026-10-29 · 1 号图「废弃超市」白盒
+
+- **做什么**：40×40m 白盒地图。3 条主路径、2 个窄门、1 段楼梯（12 级 ×0.25m = 3.0m）、3 个拾荒区（货架/仓库/收银）、1 个撤离点（后门）、5 个巡逻锚点、18 个物件锚点。
+- **首要决定**：新建 `Supermarket.unity`，**不动 Main**。Main 是 D3/D4/D6/D8/D9 全部自动化基线的沙盒，改它会一次废掉所有回归。做法是复制 Main 的配置骨架（NetworkManager/SteamLobby/TraitBootstrap/HUD/灯光），清沙盒几何体后按坐标重建。打包 `BuildWindows` 加 `-map=supermarket`，默认仍打 Main 且输出目录分开（`Builds/Supermarket/`），避免冲掉测试基线包。
+- **新增**：`PropSpawnAnchor`（场景锚点，替代 PropSpawner 的硬编码坐标表；**无锚点时回退 entries，保证 Main 不受影响**）、`EvacZone`（进入检测，D13 挂结算）、`PatrolAnchor`（D14 用）、`D12SceneSetup`（幂等生成+校验）、`D12SmokeTest`（-d12smoke 进图冒烟）。原 `MapMarkers.cs` 已拆成三个独立 .cs。
+- **验收**：`D12_VALIDATE_OK spawns=4 doors=2 patrols=5 anchors=18 steps=12 stairTop=3.0m`（连续两次一致）；冒烟 `D12_SMOKE_OK`——18 件按锚点刷出、抓到 3kg 花瓶、楼梯爬升 3.00m（1.02→4.02）。
+- **回归**：Main 重建后 D4 投掷 4.14、D6 五条、D8 八项、D9 七项全过；D3 四人 conns=4 players=4、4/4 已连（唯一异常是无 Steam 客户端的初始化报错，既有预期）。
+- **踩坑（重要）**：Setup 报 5 个巡逻锚点、Validate 只读到 1 个且每次剩下的都不同。根因是**一个 .cs 放多个 MonoBehaviour** 时 Unity 用「文件 guid + 类专属本地 fileID」定位，非首个类的序列化退化为无 guid 的本地 ID。两次错误修法：统一写成 `11500000+guid` 导致全部解析成第一个类（24 个道具锚点/0 巡逻）；保留原 fileID 补 guid 则保留了从 Main 复制来的陈旧 ID。最终**每个类拆成独立文件**根除，修完 `repaired=0` 不再需要修复。附带两条：改场景文件前必须先关场景（否则被内存旧数据覆盖）；统计要放在重开场景之后（别信内存里的数量）。
+- **遗留**：撤离点只做检测不结算（D13）；巡逻锚点只摆位（D14）；夹层只有 2.6m 进深平台不是完整二层；动线合理性仅坐标推演+单机冒烟，未真人跑图。

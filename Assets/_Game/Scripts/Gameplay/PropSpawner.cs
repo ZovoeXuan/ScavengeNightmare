@@ -51,6 +51,16 @@ namespace ScavengeNightmare.Gameplay
             spawned = true;
             yield return new WaitForSeconds(0.2f);
 
+            // 场景里摆了 PropSpawnAnchor 就按锚点生成（D12 起的新图都走这条路）；
+            // 没有锚点则回退到 entries 硬编码表，保证 Main 沙盒与全部既有用例不受影响。
+            PropSpawnAnchor[] anchors = FindObjectsByType<PropSpawnAnchor>(FindObjectsSortMode.None);
+            if (anchors.Length > 0)
+            {
+                int byAnchor = SpawnFromAnchors(anchors);
+                Debug.Log($"[D65] D65_SPAWNED count={byAnchor} source=anchors");
+                yield break;
+            }
+
             int count = 0;
             foreach (Entry entry in entries)
             {
@@ -65,7 +75,81 @@ namespace ScavengeNightmare.Gameplay
                 count++;
             }
 
-            Debug.Log($"[D65] D65_SPAWNED count={count}");
+            Debug.Log($"[D65] D65_SPAWNED count={count} source=entries");
+        }
+
+        /// <summary>
+        /// 按锚点生成：锚点只写物件档 id，具体 prefab 从 NetworkManager.spawnPrefabs 里按档匹配。
+        /// 匹配不上时跳过并告警——静默不生成会让「图里明明摆了 18 个锚点却只刷出 12 件」很难查。
+        /// </summary>
+        private static int SpawnFromAnchors(PropSpawnAnchor[] anchors)
+        {
+            NetworkManager nm = NetworkManager.singleton;
+            if (nm == null || nm.spawnPrefabs == null || nm.spawnPrefabs.Count == 0)
+            {
+                Debug.LogError("[D12] D12_SPAWN_FAIL reason=no_spawn_prefabs");
+                return 0;
+            }
+
+            int count = 0;
+            int missing = 0;
+
+            foreach (PropSpawnAnchor anchor in anchors)
+            {
+                if (anchor == null)
+                {
+                    continue;
+                }
+
+                GameObject prefab = FindPrefab(nm, anchor.profileId);
+                if (prefab == null)
+                {
+                    missing++;
+                    Debug.LogWarning($"[D12] D12_SPAWN_SKIP profile={anchor.profileId} 没有对应的 spawnPrefab");
+                    continue;
+                }
+
+                // 必须限定 UnityEngine：本文件同时 using System，Random 会歧义
+                Quaternion rot = anchor.randomYaw
+                    ? Quaternion.Euler(0f, UnityEngine.Random.Range(0f, 360f), 0f)
+                    : anchor.transform.rotation;
+
+                GameObject instance = Instantiate(prefab, anchor.transform.position, rot);
+                instance.name = $"{anchor.profileId}_{count + 1}";
+                NetworkServer.Spawn(instance);
+                count++;
+            }
+
+            if (missing > 0)
+            {
+                Debug.LogError($"[D12] D12_SPAWN_INCOMPLETE missing={missing} spawned={count} anchors={anchors.Length}");
+            }
+
+            return count;
+        }
+
+        private static GameObject FindPrefab(NetworkManager nm, string profileId)
+        {
+            if (string.IsNullOrEmpty(profileId))
+            {
+                return null;
+            }
+
+            foreach (GameObject prefab in nm.spawnPrefabs)
+            {
+                if (prefab == null)
+                {
+                    continue;
+                }
+
+                GrabbableProp prop = prefab.GetComponent<GrabbableProp>();
+                if (prop != null && prop.Profile != null && prop.Profile.id == profileId)
+                {
+                    return prefab;
+                }
+            }
+
+            return null;
         }
     }
 }
