@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a5db987546c079140ad1ad8e5a63020f, type: 3}
+  m_Name: Drawback_shaky
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Traits.DrawbackCard
+  id: shaky
+  displayName: "\u624B\u6296"
+  comedyNotes: "\u529B\u6C14\u6700\u5927\u7684\u4EBA\uFF0C\u7AEF\u7740\u6700\u8F7B\u7684\u4E1C\u897F\u4E5F\u5728\u6296\u3002"
+  compensationText: "\u6254\u5F97\u6BD4\u8C01\u90FD\u8FDC"
+  strongestConflictId: brute
+  baseWeight: 10
+  conflictWeightBonus: 30
+  excludeIfIdentitySlower: 0
+  excludeIfIdentityClumsier: 0
+  grabStiffnessScale: 0.55
+  speedScale: 1
+  interactRangeScale: 1
+  carryDivisorScale: 1
+  smallItemMassLimit: 0
+  blocksSmallItems: 0
+  shakyHands: 1
+  narrowDoorPanic: 0
+  compensationThrowScale: 1.6
+  compensationSpeedScale: 1
+  compensationGrabScale: 1
+  compensationCarryDivisorScale: 1
+  stunScale: 1
+  valueScent: 0
+  shakeAmplitude: 0.12
+  panicSpeedScale: 1

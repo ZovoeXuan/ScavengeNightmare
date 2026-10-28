@@ -25,6 +25,14 @@ namespace ScavengeNightmare.Gameplay
         {
             zone = GetComponent<BoxCollider>();
             zone.isTrigger = true;
+
+            // D8「窄门恐惧」需要知道玩家是否站在门洞里：把这个区域的 AABB 登记到全局窄区表
+            Traits.NarrowZones.Register(transform, zone.size * 0.5f);
+        }
+
+        private void OnDestroy()
+        {
+            Traits.NarrowZones.Unregister(transform);
         }
 
         private void OnTriggerStay(Collider other)

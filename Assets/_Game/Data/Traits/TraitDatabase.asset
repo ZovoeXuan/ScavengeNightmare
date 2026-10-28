@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 64a1690348039b1428c3cfc8ff8ad210, type: 3}
+  m_Name: TraitDatabase
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Traits.TraitDatabase
+  identities:
+  - {fileID: 11400000, guid: fcd46906906849643b273371cfc85a7f, type: 2}
+  - {fileID: 11400000, guid: 771f20596241cd84aa66a51fdf0d153d, type: 2}
+  - {fileID: 11400000, guid: 8904fe02570d77b46964934c4c1725b5, type: 2}
+  - {fileID: 11400000, guid: c38648b9d7cc1724da21bda885191230, type: 2}
+  cards:
+  - {fileID: 11400000, guid: faf63d1829cd7774597dc2a8bdcdefbf, type: 2}
+  - {fileID: 11400000, guid: 77421859f1c3a81408bcbbf4c43201aa, type: 2}
+  - {fileID: 11400000, guid: 643dfaa207f810c41a0f4502c3d4951d, type: 2}
+  - {fileID: 11400000, guid: 5b2f2d89c8a8fcc428b81664b4db22ed, type: 2}
+  - {fileID: 11400000, guid: 415a48f3042c7804a8d3ccc1f438f01d, type: 2}
+  seed: 0

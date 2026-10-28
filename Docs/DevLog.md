@@ -136,3 +136,13 @@
 - **新增 `Docs/Playtest_D7.md`**：联机方式三选一（推荐虚拟局域网）、四硬条件、两轮启动参数、35 分钟四段流程脚本、逐条观察判据、记录表模板、局均笑点公式与停机规则、已知限制。
 - **产出测试包**：`Builds/ScavengeNightmare_D7_20261028.zip`（42MB，剔除了 BurstDebugInformation）。
 - **核心风险（必须在约人前决定）**：当前建连是 KCP 直连 IP，**Steam 大厅不承载游戏流量**。远程约人必须先用虚拟局域网（ZeroTier/Radmin）把 IP 打通；Steam P2P 传输层仍未接入（且现有工程用 Facepunch.Steamworks，与多数依赖 Steamworks.NET 的 Mirror transport 存在绑定冲突，不是换个包就能好）。
+
+## D8 · 2026-10-28 · 缺点牌灰盒
+
+- **做了什么**：新增 `ScavengeNightmare.Traits` 命名空间——`CharacterIdentity`（4 身份）+ `DrawbackCard`（5 牌）+ `TraitDatabase`/`TraitSettings`（数据库 + 加权抽取）+ `PlayerLoadout`（身份×牌的显式合成点）+ `PlayerTraits`（服务端权威分配，SyncVar 下发）+ `TraitHUD`（左上角显示身份/缺点/补偿/冲突标红）+ `NarrowZones`（窄区注册表）+ `TraitBootstrap`；`PlayerMotor` 接入移速/冲刺禁令/负重分母/硬直倍率/窄门恐惧；`GrabController` 接入交互距离/小件拦截/手抖抖动/投掷倍率；`FeelSettings` 增加带玩家倍率的 `ThrowSpeed` 与带分母覆盖的 `CarryMultiplier`。参数体系补齐到四层（物件档×手感方案×身份×缺点牌），全部乘法叠加、全部在数据表。
+- **验收**：通过。离线段 `-d8test` 8 项全过（4 身份/5 牌/每张有代价有补偿/同轴不叠 buff/冲突率 58.7%/叠 buff 排除/任意组合数值不归零/四身份均进冲突统计）；联机段 `-d8host`+3 客户端 15 项全过（identity_unique count=4、无重复、大力士投 6.20/灵敏投 2.90/瘸子不能冲刺、小件拦截、手抖 grabScale 0.39~0.74、窄区注册）；`D8_VALIDATE_OK identities=4 cards=5 traits=1 hud=1 bootstrap=1`；`BUILD_OK`。回归：D4 投掷 4.14、D6 硬直 0.28、D3 四人 conns=4 players=4 全部恢复。
+- **遗留问题**：
+  1. 纯灰盒（染色胶囊），无美术无音效，D16 换正式角色模型。
+  2. 「笑点信号」仍需真人验证：自动化只能证明数值差异生效，证明不了好不好笑，要靠 D7 朋友局采集。
+  3. 缺点牌倍率是首版拍脑袋，D7/D10 拿到真人反馈后大概率要调。
+  4. 身份是服务端按进场顺序发，无选人 UI（计划未排）；窄门恐惧只测了单人进门洞。

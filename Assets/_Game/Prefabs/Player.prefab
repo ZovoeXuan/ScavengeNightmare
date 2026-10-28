@@ -17,6 +17,8 @@ GameObject:
   - component: {fileID: 1463503638071107648}
   - component: {fileID: 5846211142032120334}
   - component: {fileID: 312590879304819683}
+  - component: {fileID: 7594700191877814749}
+  - component: {fileID: 3520522844083442350}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -218,6 +220,38 @@ MonoBehaviour:
   syncMode: 0
   syncInterval: 0
   showHints: 1
+--- !u!114 &7594700191877814749
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 695582084772269870}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0cc9118518dd0354c996eeeb92ea459b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Traits.PlayerTraits
+  syncMethod: 0
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  database: {fileID: 11400000, guid: 2f0575d88c3bb8840875a1f4a7cdff3c, type: 2}
+  bodyRenderers: []
+  bodyRoot: {fileID: 4105135066528119429}
+--- !u!114 &3520522844083442350
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 695582084772269870}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b3c5da7427ac1194bafafbcef3fd0084, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Traits.TraitHUD
+  traits: {fileID: 0}
 --- !u!1 &2376511499117349623
 GameObject:
   m_ObjectHideFlags: 0

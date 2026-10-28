@@ -36,6 +36,14 @@ namespace ScavengeNightmare.Gameplay
         private GrabbableProp focused;
         private GrabbableProp heldProp;
         private bool inputEnabled = true;
+        private Traits.PlayerTraits traits;
+        private float shakePhase;
+
+        /// <summary>D8：角色身份 × 缺点牌。未配置时为中性值，行为与 D7 一致。</summary>
+        private Traits.PlayerLoadout Loadout => traits != null ? traits.Loadout : Traits.PlayerLoadout.Neutral;
+
+        /// <summary>D8 交互距离：近视眼看得近。</summary>
+        private float EffectiveRange => grabRange * Loadout.InteractRangeScale;
 
         public bool IsHolding => isHolding;
 
@@ -56,6 +64,8 @@ namespace ScavengeNightmare.Gameplay
             {
                 motor = GetComponent<PlayerMotor>();
             }
+
+            traits = GetComponent<Traits.PlayerTraits>();
         }
 
         private void OnDisable()
@@ -108,12 +118,21 @@ namespace ScavengeNightmare.Gameplay
         private GrabbableProp Probe()
         {
             Ray ray = new Ray(viewCamera.transform.position, viewCamera.transform.forward);
-            if (!Physics.Raycast(ray, out RaycastHit hit, grabRange, grabMask, QueryTriggerInteraction.Ignore))
+            // D8 近视眼：交互距离按 InteractRangeScale 缩短
+            if (!Physics.Raycast(ray, out RaycastHit hit, EffectiveRange, grabMask, QueryTriggerInteraction.Ignore))
             {
                 return null;
             }
 
-            return hit.rigidbody != null ? hit.rigidbody.GetComponent<GrabbableProp>() : null;
+            GrabbableProp prop = hit.rigidbody != null ? hit.rigidbody.GetComponent<GrabbableProp>() : null;
+
+            // D8「看不清小件」：小物件不高亮、抓不到，必须凑近或让队友帮忙
+            if (prop != null && Loadout.IsSmallItem(prop.Mass))
+            {
+                return null;
+            }
+
+            return prop;
         }
 
         private void SetFocus(GrabbableProp next)
@@ -213,8 +232,14 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
-            // 距离校验：防止客户端隔空抓
-            if (Vector3.Distance(transform.position, prop.transform.position) > grabRange + 1f)
+            // 距离校验：防止客户端隔空抓。D8 近视眼的交互距离更短
+            if (Vector3.Distance(transform.position, prop.transform.position) > EffectiveRange + 1f)
+            {
+                return;
+            }
+
+            // D8「看不清小件」：服务端同样拦截，客户端不能靠改包绕过
+            if (Loadout.IsSmallItem(prop.Mass))
             {
                 return;
             }
@@ -257,7 +282,8 @@ namespace ScavengeNightmare.Gameplay
             }
 
             body.WakeUp();
-            body.linearVelocity = AimDirection() * FeelSettings.ThrowSpeed(profile);
+            // D8：大力士扔得远；「手抖」牌的补偿收益也落在这一轴上
+            body.linearVelocity = AimDirection() * FeelSettings.ThrowSpeed(profile, Loadout.ThrowScale);
             body.angularVelocity = Random.onUnitSphere * FeelSettings.ThrowSpin(profile.throwSpin);
 
             PlaytestRecorder recorder = PlaytestRecorder.Instance;
@@ -296,7 +322,9 @@ namespace ScavengeNightmare.Gameplay
             }
 
             float maxSpeed = FeelSettings.GrabMaxSpeed(profile.grabMaxSpeed);
-            Vector3 desired = Vector3.ClampMagnitude(delta * FeelSettings.FollowStiffness(followStiffness), maxSpeed);
+            // D8：角色手笨/手抖降低跟随刚度，物件更容易落后、被环境磕到
+            float stiffness = FeelSettings.FollowStiffness(followStiffness) * Loadout.GrabStiffnessScale;
+            Vector3 desired = Vector3.ClampMagnitude(delta * stiffness, maxSpeed);
             body.linearVelocity = Vector3.MoveTowards(
                 body.linearVelocity,
                 desired,
@@ -304,11 +332,28 @@ namespace ScavengeNightmare.Gameplay
             body.angularVelocity = Vector3.MoveTowards(body.angularVelocity, Vector3.zero, 18f * Time.fixedDeltaTime);
         }
 
-        /// <summary>朝向 + 俯仰合成准星方向；俯仰由 PlayerMotor 同步到服务端。</summary>
+        /// <summary>
+        /// 朝向 + 俯仰合成准星方向；俯仰由 PlayerMotor 同步到服务端。
+        /// D8「手抖」在这里注入抖动：抖动加在服务端计算的持物目标点上，
+        /// 因此四个人都能看到东西在手里晃，而不只是本地画面抖。
+        /// </summary>
         private Vector3 AimDirection()
         {
             float pitch = motor != null ? motor.ViewPitchDeg : 0f;
-            return Quaternion.AngleAxis(pitch, transform.right) * transform.forward;
+            Vector3 dir = Quaternion.AngleAxis(pitch, transform.right) * transform.forward;
+
+            Traits.PlayerLoadout load = Loadout;
+            if (load.ShakyHands && isHolding && load.ShakeAmplitude > 0f)
+            {
+                shakePhase += Time.fixedDeltaTime * 11f;
+                // 两条不同频率的正交噪声：比单纯随机数更像「手在抖」，也不会高频抽搐
+                float jitterX = Mathf.PerlinNoise(shakePhase, 0.31f) - 0.5f;
+                float jitterY = Mathf.PerlinNoise(0.77f, shakePhase) - 0.5f;
+                dir = (dir + transform.right * (jitterX * load.ShakeAmplitude * 2f)
+                          + transform.up * (jitterY * load.ShakeAmplitude * 2f)).normalized;
+            }
+
+            return dir;
         }
 
         public void SetInputEnabled(bool value)

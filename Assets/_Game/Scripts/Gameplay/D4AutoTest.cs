@@ -48,6 +48,10 @@ namespace ScavengeNightmare.Gameplay
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = 60;
 
+            // D4 基线测的是「物件物理本身」，必须排除 D8 角色差异：
+            // 否则测试玩家被随机分配大力士/手抖，投掷速度会从 4.14 漂到 6~10，基线断言失效。
+            ScavengeNightmare.Traits.TraitSettings.ForceNoTraits = true;
+
             StartCoroutine(Run());
         }
 

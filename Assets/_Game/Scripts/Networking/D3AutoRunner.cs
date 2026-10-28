@@ -74,6 +74,9 @@ namespace ScavengeNightmare.Networking
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = ReadInt(args, "-fps=", 60);
 
+            // D3 位移基线是 walkSpeed（3.2 m/s）；排除 D8 角色差异，否则灵敏/瘸子会改变位移曲线。
+            ScavengeNightmare.Traits.TraitSettings.ForceNoTraits = true;
+
             StartCoroutine(BeginNextFrame());
         }
 
@@ -168,7 +171,9 @@ namespace ScavengeNightmare.Networking
             if (role == "server")
             {
                 int conns = NetworkServer.active ? NetworkServer.connections.Count : 0;
-                int players = NetworkServer.active ? NetworkServer.spawned.Count : 0;
+                // 只数真实玩家：NetworkServer.spawned 含 PropSpawner 生成的物件，
+                // 用 spawned.Count 会把 11 个物件也算成玩家（D6.5 起的既有口径 bug）。
+                int players = CountPlayers();
                 Debug.Log($"[D3] D3_STATE role=server conns={conns} players={players} fps={Fps():F1} pos={PositionsText()}");
                 return;
             }
@@ -185,6 +190,26 @@ namespace ScavengeNightmare.Networking
             return dt > 0f ? 1f / dt : 0f;
         }
 
+        /// <summary>服务端当前真实玩家数（带 PlayerMotor 的联网对象），排除物件。</summary>
+        private static int CountPlayers()
+        {
+            if (!NetworkServer.active)
+            {
+                return 0;
+            }
+
+            int n = 0;
+            foreach (NetworkIdentity identity in NetworkServer.spawned.Values)
+            {
+                if (identity != null && identity.GetComponent<PlayerMotor>() != null)
+                {
+                    n++;
+                }
+            }
+
+            return n;
+        }
+
         private static string PositionsText()
         {
             if (!NetworkServer.active)
@@ -196,6 +221,12 @@ namespace ScavengeNightmare.Networking
             bool first = true;
             foreach (NetworkIdentity identity in NetworkServer.spawned.Values)
             {
+                // 只输出玩家位置：物件位置由 D6.5 用例负责，混在这里会掩盖位移曲线
+                if (identity == null || identity.GetComponent<PlayerMotor>() == null)
+                {
+                    continue;
+                }
+
                 if (!first)
                 {
                     sb.Append(',');

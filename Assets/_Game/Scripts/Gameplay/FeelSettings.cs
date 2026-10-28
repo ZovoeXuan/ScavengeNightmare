@@ -65,17 +65,42 @@ namespace ScavengeNightmare.Gameplay
         }
 
         /// <summary>
+        /// 负重减速，但用指定的分母（D8：角色体型与缺点牌会改写「多重才算重」）。
+        /// divisorOverride ≤ 0 时退回手感方案的分母。
+        /// </summary>
+        public static float CarryMultiplier(float mass, float divisorOverride)
+        {
+            if (divisorOverride > 0f)
+            {
+                return Mathf.Clamp(1f - mass / divisorOverride, 0.45f, 1f);
+            }
+
+            return CarryMultiplier(mass);
+        }
+
+        /// <summary>
         /// 出手速度 = 冲量 × 方案倍率 ÷ 质量，再按物件上限截断。
         /// 「越重扔得越慢」这条关系在任何方案下都成立，方案只整体缩放力度。
         /// </summary>
         public static float ThrowSpeed(PropPhysicsProfile profile)
+        {
+            return ThrowSpeed(profile, 1f);
+        }
+
+        /// <summary>
+        /// 出手速度，带玩家侧倍率（D8：大力士扔得远、手抖牌补偿也是扔得远）。
+        /// 倍率作用在冲量上，因此「越重扔得越慢」的关系在任何倍率下都成立。
+        /// </summary>
+        public static float ThrowSpeed(PropPhysicsProfile profile, float playerThrowScale)
         {
             if (profile == null)
             {
                 return 0f;
             }
 
-            float impulse = profile.throwImpulse * Scale(active != null ? active.throwImpulseScale : 1f, 1f);
+            float impulse = profile.throwImpulse
+                            * Scale(active != null ? active.throwImpulseScale : 1f, 1f)
+                            * Mathf.Max(0.05f, playerThrowScale);
             return Mathf.Clamp(impulse / Mathf.Max(profile.mass, 0.1f), 1f, profile.maxThrowSpeed);
         }
 

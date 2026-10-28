@@ -45,7 +45,12 @@ namespace ScavengeNightmare.Networking
         private Vector2 automationMove;
         private bool automationSprint;
         private float carrySpeedMultiplier = 1f;
+        private float carryMassKg;
         private float stunUntil;
+        private Traits.PlayerTraits traits;
+
+        /// <summary>D8：角色身份 × 缺点牌的合成倍率。未配置时返回中性值（倍率全 1），行为与 D7 一致。</summary>
+        private Traits.PlayerLoadout Loadout => traits != null ? traits.Loadout : Traits.PlayerLoadout.Neutral;
 
         // 视角俯仰需要同步给服务端：服务端做抓取/投掷时要知道玩家瞄哪儿
         [SyncVar] private float syncPitch;
@@ -71,7 +76,9 @@ namespace ScavengeNightmare.Networking
                 return;
             }
 
-            stunUntil = Mathf.Max(stunUntil, Time.time + seconds);
+            // D8：抗揍角色（硬直倍率 < 1）顿得更短
+            float scaled = seconds * Mathf.Max(0.1f, StunScale);
+            stunUntil = Mathf.Max(stunUntil, Time.time + scaled);
         }
 
         /// <summary>
@@ -95,6 +102,8 @@ namespace ScavengeNightmare.Networking
         {
             ApplySettings();
             controller = GetComponent<CharacterController>();
+            traits = GetComponent<Traits.PlayerTraits>();
+
             if (playerCamera == null)
             {
                 playerCamera = GetComponentInChildren<Camera>(true);
@@ -125,6 +134,12 @@ namespace ScavengeNightmare.Networking
 
         public override void OnStartLocalPlayer()
         {
+            if (traits != null)
+            {
+                // 身份/牌是服务端下发的 SyncVar，到达时刻晚于本地生成：必须订阅而不是在 Start 里读一次
+                traits.LoadoutChanged += OnTraitsChanged;
+            }
+
             if (playerCamera != null)
             {
                 playerCamera.gameObject.SetActive(true);
@@ -157,6 +172,11 @@ namespace ScavengeNightmare.Networking
 
         private void OnDisable()
         {
+            if (traits != null)
+            {
+                traits.LoadoutChanged -= OnTraitsChanged;
+            }
+
             if (!isLocalPlayer)
             {
                 return;
@@ -198,6 +218,19 @@ namespace ScavengeNightmare.Networking
             ApplyMove();
         }
 
+        /// <summary>身份/牌到达或变更：重算负重系数（瘸子的冲刺禁令在 ReadInput 里实时判断）。</summary>
+        private void OnTraitsChanged(Traits.PlayerLoadout loadout)
+        {
+            SetCarryMass(carryMassKg);
+
+            if (isLocalPlayer)
+            {
+                Debug.Log($"[D8] D8_LOCAL_TRAITS identity={(loadout.Identity != null ? loadout.Identity.id : "-")} " +
+                          $"card={(loadout.Card != null ? loadout.Card.id : "-")} " +
+                          $"speed={loadout.SpeedScale:F2} sprint={loadout.CanSprint} conflict={loadout.IsConflict}");
+            }
+        }
+
         private void ReadInput()
         {
             if (IsStunned)
@@ -215,7 +248,8 @@ namespace ScavengeNightmare.Networking
                 moveInput = automationMove;
                 lookInput = Vector2.zero;
                 jumpQueued = false;
-                sprintHeld = automationSprint;
+                // 自动化同样受「瘸子不能冲刺」约束，否则 D8 验证会测不到这条
+                sprintHeld = automationSprint && Loadout.CanSprint;
                 return;
             }
 
@@ -233,7 +267,7 @@ namespace ScavengeNightmare.Networking
             float y = (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f);
             moveInput = Vector2.ClampMagnitude(new Vector2(x, y), 1f);
 
-            sprintHeld = kb.leftShiftKey.isPressed;
+            sprintHeld = kb.leftShiftKey.isPressed && Loadout.CanSprint;
             jumpQueued = kb.spaceKey.wasPressedThisFrame;
 
             Mouse mouse = Mouse.current;
@@ -290,6 +324,17 @@ namespace ScavengeNightmare.Networking
             Vector3 desired = transform.right * moveInput.x + transform.forward * moveInput.y;
             float speed = (sprintHeld ? sprintSpeed : walkSpeed) * carrySpeedMultiplier;
             speed = ScavengeNightmare.Gameplay.FeelSettings.PlayerSpeed(speed);
+
+            Traits.PlayerLoadout load = Loadout;
+            // D8 角色差异：大力士慢、灵敏快；缺点牌「瘸子」不能冲刺已在 ReadInput 拦掉
+            speed *= load.SpeedScale;
+
+            // D8「窄门恐惧」：处在门洞窄区里时额外降速，把「不敢进门」做成可感知的物理限制
+            if (load.NarrowDoorPanic && Traits.NarrowZones.InsideAny(transform.position))
+            {
+                speed *= load.PanicSpeedScale;
+            }
+
             planarVelocity = Vector3.MoveTowards(planarVelocity, desired * speed, acceleration * Time.deltaTime);
 
             if (controller.isGrounded)
@@ -332,10 +377,21 @@ namespace ScavengeNightmare.Networking
             }
         }
 
-        /// <summary>负重减速：D1 冻结的「跑会被拖累」，系数由当前手感方案决定。</summary>
+        /// <summary>负重减速：D1 冻结的「跑会被拖累」。分母由角色体型与缺点牌改写（D8）。</summary>
         public void SetCarryMass(float kg)
         {
-            carrySpeedMultiplier = ScavengeNightmare.Gameplay.FeelSettings.CarryMultiplier(kg);
+            carryMassKg = kg;
+            Traits.PlayerLoadout load = Loadout;
+            float divisor = load.CarryDivisor(ScavengeNightmare.Gameplay.FeelSettings.Active != null
+                ? ScavengeNightmare.Gameplay.FeelSettings.Active.carryDivisor
+                : 70f);
+            carrySpeedMultiplier = ScavengeNightmare.Gameplay.FeelSettings.CarryMultiplier(kg, divisor);
         }
+
+        /// <summary>硬直时间倍率（D8）：抗揍的角色被砸顿得更短。</summary>
+        public float StunScale => Loadout.StunScale;
+
+        /// <summary>D8 交互距离倍率：近视眼看得近。</summary>
+        public float InteractRangeScale => Loadout.InteractRangeScale;
     }
 }

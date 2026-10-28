@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a5db987546c079140ad1ad8e5a63020f, type: 3}
+  m_Name: Drawback_claustro
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Traits.DrawbackCard
+  id: claustro
+  displayName: "\u7A84\u95E8\u6050\u60E7"
+  comedyNotes: "\u4E00\u94BB\u95E8\u6D1E\u5C31\u53D1\u6035\uFF0C\u78E8\u78E8\u8E6D\u8E6D\uFF1B\u53EF\u4E00\u5230\u5F00\u9614\u5730\u5C31\u6492\u817F\u72C2\u5954\u3002"
+  compensationText: "\u5E73\u5730\u51B2\u523A\u66F4\u5FEB"
+  strongestConflictId: cripple
+  baseWeight: 10
+  conflictWeightBonus: 25
+  excludeIfIdentitySlower: 0
+  excludeIfIdentityClumsier: 0
+  grabStiffnessScale: 1
+  speedScale: 1
+  interactRangeScale: 1
+  carryDivisorScale: 1
+  smallItemMassLimit: 0
+  blocksSmallItems: 0
+  shakyHands: 0
+  narrowDoorPanic: 1
+  compensationThrowScale: 1
+  compensationSpeedScale: 1.25
+  compensationGrabScale: 1
+  compensationCarryDivisorScale: 1
+  stunScale: 1
+  valueScent: 0
+  shakeAmplitude: 0
+  panicSpeedScale: 0.45

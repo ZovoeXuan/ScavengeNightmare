@@ -30,6 +30,11 @@ namespace ScavengeNightmare.Gameplay
 
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = 60;
+
+            // D6 基线测的是「摩擦事件本身」，必须排除 D8 角色差异：
+            // 否则抗揍角色（stunScale<1）会让手滑砸脚的硬直从 0.28 漂到 0.08，断言失效。
+            ScavengeNightmare.Traits.TraitSettings.ForceNoTraits = true;
+
             StartCoroutine(Run());
         }
 
