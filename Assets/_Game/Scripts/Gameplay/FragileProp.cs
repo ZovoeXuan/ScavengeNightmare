@@ -44,6 +44,12 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
+            // 服务端权威：客户端不模拟物理，只有服务端判定才准
+            if (networked != null && !networked.isServer)
+            {
+                return;
+            }
+
             PropPhysicsProfile profile = grabbable.Profile;
             if (profile == null || !profile.isFragile)
             {

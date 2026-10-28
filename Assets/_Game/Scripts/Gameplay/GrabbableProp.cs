@@ -58,6 +58,12 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
+            // 服务端权威：只有服务端判定硬直，再广播给真正要顿住的那个客户端
+            if (networked != null && !networked.isServer)
+            {
+                return;
+            }
+
             PlayerMotor motor = collision.collider.GetComponentInParent<PlayerMotor>();
             if (motor == null)
             {
@@ -66,7 +72,15 @@ namespace ScavengeNightmare.Gameplay
 
             bool heavy = profile.mass >= FrictionEvents.Tuning.stunHeavyMass;
             float seconds = heavy ? FrictionEvents.Tuning.stunHeavyDuration : FrictionEvents.Tuning.stunDuration;
-            motor.Stun(seconds);
+            if (motor.isServer)
+            {
+                motor.ServerStun(seconds);
+            }
+            else
+            {
+                motor.Stun(seconds);
+            }
+
             FrictionEvents.Report("手滑砸脚", $"{profile.displayName} 砸中玩家（{speed:F1} m/s）硬直 {seconds:F1}s", 420f);
         }
 
@@ -146,21 +160,6 @@ namespace ScavengeNightmare.Gameplay
         public void SetHeld(bool value)
         {
             held = value;
-
-            // 抓取即接管权威，松手交回房主；未联网时 networked 为 null，行为不变
-            if (networked == null)
-            {
-                return;
-            }
-
-            if (value)
-            {
-                networked.RequestAuthority();
-            }
-            else
-            {
-                networked.ReleaseAuthority();
-            }
         }
 
         public void SetHighlight(bool on)

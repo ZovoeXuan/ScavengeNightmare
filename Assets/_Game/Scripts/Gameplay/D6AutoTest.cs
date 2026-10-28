@@ -146,7 +146,7 @@ namespace ScavengeNightmare.Gameplay
             door.Close();
             yield return new WaitForSeconds(1.2f);
 
-            bool released = grab.Held == null;
+            bool released = !grab.IsHolding;
             bool holderCleared = prop.Holder == null;
             Debug.Log($"[D6] D6_CLAMP_{(released && holderCleared ? "OK" : "FAIL")} released={released} holderCleared={holderCleared}");
 
@@ -173,7 +173,7 @@ namespace ScavengeNightmare.Gameplay
             const int steps = 70;
             for (int i = 1; i <= steps; i++)
             {
-                if (player == null || grab.Held == null)
+                if (player == null || !grab.IsHolding)
                 {
                     break;
                 }

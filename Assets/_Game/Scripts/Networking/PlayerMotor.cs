@@ -47,6 +47,13 @@ namespace ScavengeNightmare.Networking
         private float carrySpeedMultiplier = 1f;
         private float stunUntil;
 
+        // 视角俯仰需要同步给服务端：服务端做抓取/投掷时要知道玩家瞄哪儿
+        [SyncVar] private float syncPitch;
+        private float nextPitchSendAt;
+
+        /// <summary>同步到服务端的视角俯仰（度，0 = 水平，向下为正）。</summary>
+        public float ViewPitchDeg => syncPitch;
+
         /// <summary>是否处于被砸硬直中。</summary>
         public bool IsStunned => Time.time < stunUntil;
 
@@ -246,6 +253,36 @@ namespace ScavengeNightmare.Networking
             {
                 playerCamera.transform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
             }
+
+            // 10Hz 上报俯仰，够服务端算准星方向，又不至于每帧刷网络
+            if (Time.time >= nextPitchSendAt)
+            {
+                nextPitchSendAt = Time.time + 0.1f;
+                CmdSetPitch(pitch);
+            }
+        }
+
+        [Command]
+        private void CmdSetPitch(float value)
+        {
+            syncPitch = value;
+        }
+
+        /// <summary>服务端判定硬直后广播，真正让本地玩家顿住的是这条 Rpc。</summary>
+        [ClientRpc]
+        public void RpcStun(float seconds)
+        {
+            if (isLocalPlayer)
+            {
+                Stun(seconds);
+            }
+        }
+
+        /// <summary>服务端调用：本端立刻硬直，并通知所属客户端。</summary>
+        public void ServerStun(float seconds)
+        {
+            Stun(seconds);
+            RpcStun(seconds);
         }
 
         private void ApplyMove()

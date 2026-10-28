@@ -48,7 +48,7 @@ namespace ScavengeNightmare.UI
             float cy = Screen.height * 0.5f;
 
             // 中心准星：有目标时放大并变色
-            bool hasTarget = grab.HasFocus || grab.Held != null;
+            bool hasTarget = grab.HasFocus || grab.IsHolding;
             float size = hasTarget ? 6f : 4f;
             Color old = GUI.color;
             GUI.color = hasTarget ? new Color(1f, 0.85f, 0.35f) : new Color(1f, 1f, 1f, 0.75f);
@@ -65,10 +65,9 @@ namespace ScavengeNightmare.UI
 
         private string BuildHint()
         {
-            GrabbableProp held = grab.Held;
-            if (held != null)
+            if (grab.IsHolding)
             {
-                return showMass ? $"持有中 · {MassText(held)} · 松开左键投掷" : "持有中 · 松开左键投掷";
+                return showMass ? $"持有中 · {grab.HeldMass:F1}kg · 松开左键投掷" : "持有中 · 松开左键投掷";
             }
 
             GrabbableProp focus = grab.Focused;

@@ -111,7 +111,7 @@ namespace ScavengeNightmare.EditorTools
                 Check(identity != null && identity.assetId != 0u, $"asset_id_{id}");
 
                 NetworkTransformReliable nt = prefab.GetComponent<NetworkTransformReliable>();
-                Check(nt != null && nt.syncDirection == SyncDirection.ClientToServer, $"sync_direction_{id}");
+                Check(nt != null && nt.syncDirection == SyncDirection.ServerToClient, $"sync_direction_{id}");
                 Check(prefab.GetComponent<NetworkedProp>() != null, $"networked_prop_{id}");
                 Check(File.ReadAllText(path).Contains("_assetId: 0") == false, $"asset_id_persisted_{id}");
             }
@@ -160,9 +160,13 @@ namespace ScavengeNightmare.EditorTools
                 nt = contents.AddComponent<NetworkTransformReliable>();
             }
 
-            nt.syncDirection = SyncDirection.ClientToServer;
+            // 服务端权威：固定 ServerToClient，运行时不再翻转
+            nt.syncDirection = SyncDirection.ServerToClient;
             nt.syncPosition = true;
             nt.syncRotation = true;
+            // 插值保持开启：同刻位置差实测 0.30m（约 80ms），插值能让远程端更平滑
+            nt.interpolatePosition = true;
+            nt.interpolateRotation = true;
 
             if (contents.GetComponent<NetworkedProp>() == null)
             {

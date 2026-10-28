@@ -6,45 +6,47 @@ using UnityEngine.InputSystem;
 namespace ScavengeNightmare.Gameplay
 {
     /// <summary>
-    /// D4 抓取控制器：准星指向高亮 → 按住抓取（速度控制，**不 SetParent**）→ 松手投掷（继承玩家速度）。
+    /// D6.5 服务端权威抓取。
     ///
-    /// 三个设计约束（对应 D1 冻结的「手感三原则」）：
-    /// 1. 物件全程保持物理模拟与碰撞，靠速度控制跟随，不做刚性挂接，所以会撞墙、会被卡住、会掉；
-    /// 2. 抓握加速度与最高速度来自数据表，重物更「黏不住」；
-    /// 3. 出手速度 = 投掷冲量 / 质量，越重扔得越慢。
+    /// 客户端只做两件事：准星指向谁（本地射线，零延迟高亮）、按下 / 松开（发 Command）。
+    /// 真正的「拖着重物走」由服务端在 FixedUpdate 里做速度控制，位置通过 NetworkTransform
+    /// （固定 ServerToClient）回传给所有客户端。
     ///
-    /// D4 范围内不做：多人所有权（谁能抓同一件）、共持、摩擦事件（D6）。
+    /// 为什么不再用客户端权威：Mirror 的 NetworkTransform 同步方向不能运行时翻转，
+    /// 翻转会重置可靠基线，客户端只能按旧快照慢慢爬（实测同一时刻位置差 8.67m）。
     /// </summary>
-    public sealed class GrabController : MonoBehaviour
+    public sealed class GrabController : NetworkBehaviour
     {
         [Header("引用")]
         [SerializeField] private Camera viewCamera;
         [SerializeField] private PlayerMotor motor;
 
-        [Header("拾取")]
+        [Header("拾取（本地射线）")]
         [SerializeField] private float grabRange = 3.2f;
         [SerializeField] private LayerMask grabMask = ~0;
 
-        [Header("跟随")]
-        [Tooltip("目标点跟随的刚度（1/s），越大越紧跟准星")]
+        [Header("跟随（服务端执行）")]
         [SerializeField] private float followStiffness = 16f;
+        [Tooltip("持物点相对玩家原点抬高多少（近似相机高度）")]
+        [SerializeField] private float holdHeightOffset = 0.45f;
+
+        [SyncVar] private bool isHolding;
+        [SyncVar] private float heldMass;
 
         private GrabbableProp focused;
-        private GrabbableProp held;
-        private NetworkIdentity identity;
+        private GrabbableProp heldProp;
         private bool inputEnabled = true;
 
-        public GrabbableProp Held => held;
+        public bool IsHolding => isHolding;
+
+        /// <summary>UI 用：只有本地玩家才画准星与提示。</summary>
+        public bool IsLocalControl => isLocalPlayer;
+        public float HeldMass => heldMass;
         public GrabbableProp Focused => focused;
         public bool HasFocus => focused != null;
 
-        /// <summary>只有本地玩家能抓：远端玩家的复制体不读键鼠。</summary>
-        public bool IsLocalControl => identity == null || identity.isLocalPlayer;
-
         private void Awake()
         {
-            identity = GetComponent<NetworkIdentity>();
-
             if (viewCamera == null)
             {
                 viewCamera = GetComponentInChildren<Camera>(true);
@@ -58,9 +60,9 @@ namespace ScavengeNightmare.Gameplay
 
         private void OnDisable()
         {
-            if (held != null)
+            if (isServer && isHolding)
             {
-                Release(false);
+                ServerRelease(false);
             }
 
             SetFocus(null);
@@ -68,17 +70,17 @@ namespace ScavengeNightmare.Gameplay
 
         private void Update()
         {
-            if (viewCamera == null || !inputEnabled || !IsLocalControl)
+            if (!isLocalPlayer || viewCamera == null || !inputEnabled)
             {
                 return;
             }
 
-            if (held != null)
+            if (isHolding)
             {
                 Mouse mouse = Mouse.current;
                 if (mouse == null || !mouse.leftButton.isPressed)
                 {
-                    Release(true);
+                    RequestRelease(true);
                 }
 
                 return;
@@ -89,46 +91,18 @@ namespace ScavengeNightmare.Gameplay
             Mouse m = Mouse.current;
             if (m != null && m.leftButton.wasPressedThisFrame && focused != null)
             {
-                TryGrab(focused);
+                RequestGrab(focused);
             }
         }
 
         private void FixedUpdate()
         {
-            if (held == null)
+            if (!isServer || !isHolding)
             {
                 return;
             }
 
-            Rigidbody body = held.Body;
-            PropPhysicsProfile profile = held.Profile;
-            if (body == null || profile == null)
-            {
-                Release(false);
-                return;
-            }
-
-            Vector3 target = viewCamera.transform.position + viewCamera.transform.forward * FeelSettings.HoldDistance(profile.holdDistance);
-            Vector3 delta = target - body.worldCenterOfMass;
-
-            if (delta.magnitude > profile.breakDistance)
-            {
-                // 被门框 / 墙 / 队友卡住：直接脱手，而不是硬拽穿模。
-                Release(false);
-                return;
-            }
-
-            float maxSpeed = FeelSettings.GrabMaxSpeed(profile.grabMaxSpeed);
-            Vector3 desiredVelocity = Vector3.ClampMagnitude(delta * FeelSettings.FollowStiffness(followStiffness), maxSpeed);
-            body.linearVelocity = Vector3.MoveTowards(
-                body.linearVelocity,
-                desiredVelocity,
-                FeelSettings.GrabAcceleration(profile.grabAcceleration) * Time.fixedDeltaTime);
-
-            body.angularVelocity = Vector3.MoveTowards(body.angularVelocity, Vector3.zero, 18f * Time.fixedDeltaTime);
-
-            // 兜底：任何情况下都不让被抓物件飞出物理合理区间。
-            held.ClampSpeed(maxSpeed * 1.5f);
+            ServerHoldStep();
         }
 
         private GrabbableProp Probe()
@@ -162,42 +136,104 @@ namespace ScavengeNightmare.Gameplay
             }
         }
 
+        // ---------- 请求入口 ----------
+
+        public void RequestGrab(GrabbableProp target)
+        {
+            if (target == null || isHolding)
+            {
+                return;
+            }
+
+            if (isServer)
+            {
+                ServerGrab(target);
+                return;
+            }
+
+            NetworkIdentity id = target.GetComponent<NetworkIdentity>();
+            if (id == null)
+            {
+                return;
+            }
+
+            CmdRequestGrab(id);
+        }
+
+        public void RequestRelease(bool asThrow)
+        {
+            if (!isHolding)
+            {
+                return;
+            }
+
+            if (isServer)
+            {
+                ServerRelease(asThrow);
+            }
+            else
+            {
+                CmdRequestRelease(asThrow);
+            }
+        }
+
+        /// <summary>兼容 D4 / D6 自动化用例的旧接口。</summary>
         public bool TryGrab(GrabbableProp target)
         {
-            if (held != null || target == null)
-            {
-                return false;
-            }
-
-            held = target;
-            held.SetHeld(true);
-            held.SetHolder(this);
-            held.SetHighlight(false);
-            SetFocus(null);
-
-            // 静止的刚体会进入 sleep，直接改速度不生效，必须先唤醒，否则「抓不动」。
-            if (held.Body != null)
-            {
-                held.Body.WakeUp();
-            }
-
-            if (motor != null && held.Profile != null)
-            {
-                motor.SetCarryMass(held.Mass);
-            }
-
-            return true;
+            RequestGrab(target);
+            return isHolding;
         }
 
         public void Release(bool asThrow)
         {
-            GrabbableProp prop = held;
-            held = null;
+            RequestRelease(asThrow);
+        }
 
-            if (motor != null)
+        [Command]
+        private void CmdRequestGrab(NetworkIdentity target)
+        {
+            if (target != null)
             {
-                motor.SetCarryMass(0f);
+                ServerGrab(target.GetComponent<GrabbableProp>());
             }
+        }
+
+        [Command]
+        private void CmdRequestRelease(bool asThrow)
+        {
+            ServerRelease(asThrow);
+        }
+
+        // ---------- 服务端实现 ----------
+
+        private void ServerGrab(GrabbableProp prop)
+        {
+            if (isHolding || prop == null || prop.Body == null)
+            {
+                return;
+            }
+
+            // 距离校验：防止客户端隔空抓
+            if (Vector3.Distance(transform.position, prop.transform.position) > grabRange + 1f)
+            {
+                return;
+            }
+
+            heldProp = prop;
+            heldMass = prop.Mass;
+            isHolding = true;
+            prop.SetHeld(true);
+            // 门夹等外部事件需要能反向让持有者脱手
+            prop.SetHolder(this);
+            prop.Body.WakeUp();
+        }
+
+        private void ServerRelease(bool asThrow)
+        {
+            GrabbableProp prop = heldProp;
+            heldProp = null;
+            isHolding = false;
+            heldMass = 0f;
 
             if (prop == null)
             {
@@ -209,27 +245,60 @@ namespace ScavengeNightmare.Gameplay
 
             Rigidbody body = prop.Body;
             PropPhysicsProfile profile = prop.Profile;
-            if (body == null || profile == null)
+            if (body == null || profile == null || !asThrow)
             {
                 return;
             }
 
-            if (!asThrow)
-            {
-                return;
-            }
-
-            Vector3 playerVelocity = motor != null ? motor.CurrentVelocity : Vector3.zero;
-            Vector3 velocity = playerVelocity + viewCamera.transform.forward * FeelSettings.ThrowSpeed(profile);
-
-            // 玩家自身速度 + 出手速度的合成值也要设上限，避免贴脸扔出穿模。
-            float limit = profile.maxThrowSpeed + playerVelocity.magnitude;
             body.WakeUp();
-            body.linearVelocity = Vector3.ClampMagnitude(velocity, limit);
+            body.linearVelocity = AimDirection() * FeelSettings.ThrowSpeed(profile);
             body.angularVelocity = Random.onUnitSphere * FeelSettings.ThrowSpin(profile.throwSpin);
         }
 
-        /// <summary>自动化验证用：关掉键鼠输入，改由测试脚本直接调用 TryGrab / Release。</summary>
+        private void ServerHoldStep()
+        {
+            if (heldProp == null)
+            {
+                isHolding = false;
+                return;
+            }
+
+            Rigidbody body = heldProp.Body;
+            PropPhysicsProfile profile = heldProp.Profile;
+            if (body == null || profile == null)
+            {
+                ServerRelease(false);
+                return;
+            }
+
+            Vector3 target = transform.position
+                             + AimDirection() * FeelSettings.HoldDistance(profile.holdDistance)
+                             + Vector3.up * holdHeightOffset;
+            Vector3 delta = target - body.worldCenterOfMass;
+
+            if (delta.magnitude > profile.breakDistance)
+            {
+                // 被门框 / 墙卡住：直接脱手，而不是硬拽穿模
+                ServerRelease(false);
+                return;
+            }
+
+            float maxSpeed = FeelSettings.GrabMaxSpeed(profile.grabMaxSpeed);
+            Vector3 desired = Vector3.ClampMagnitude(delta * FeelSettings.FollowStiffness(followStiffness), maxSpeed);
+            body.linearVelocity = Vector3.MoveTowards(
+                body.linearVelocity,
+                desired,
+                FeelSettings.GrabAcceleration(profile.grabAcceleration) * Time.fixedDeltaTime);
+            body.angularVelocity = Vector3.MoveTowards(body.angularVelocity, Vector3.zero, 18f * Time.fixedDeltaTime);
+        }
+
+        /// <summary>朝向 + 俯仰合成准星方向；俯仰由 PlayerMotor 同步到服务端。</summary>
+        private Vector3 AimDirection()
+        {
+            float pitch = motor != null ? motor.ViewPitchDeg : 0f;
+            return Quaternion.AngleAxis(pitch, transform.right) * transform.forward;
+        }
+
         public void SetInputEnabled(bool value)
         {
             inputEnabled = value;

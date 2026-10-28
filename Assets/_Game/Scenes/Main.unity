@@ -443,10 +443,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6ca91e956660d714e858a3e0688eda05, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.PropSpawner
-  syncMethod: 0
-  syncDirection: 0
-  syncMode: 0
-  syncInterval: 0
   entries:
   - Prefab: {fileID: 2413384027114532654, guid: 827e910c65983824ca3c18b99c46c88b, type: 3}
     Position: {x: -2.4, y: 0.36, z: -1.4}

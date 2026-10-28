@@ -121,7 +121,7 @@ namespace ScavengeNightmare.Gameplay
                 bool grabbed = grab.TryGrab(target);
                 Debug.Log($"[D65] D65_GRAB grabbed={grabbed} prop={target.name}");
                 yield return new WaitForSeconds(0.5f);
-                Debug.Log($"[D65] D65_HOLD_STABLE held={(grab.Held != null)}");
+                Debug.Log($"[D65] D65_HOLD_STABLE held={(grab.IsHolding)}");
 
                 // 带着物件走 2 秒，制造明显的位移动画
                 if (motor != null)
@@ -190,7 +190,8 @@ namespace ScavengeNightmare.Gameplay
 
                 Vector3 p = prop.transform.position;
                 string flag = target != null && prop == target ? "*" : string.Empty;
-                Debug.Log($"[D65] D65_STATE role={(host ? "host" : "client")} netId={id.netId} name={prop.name}{flag} pos={p.x:F2},{p.y:F2},{p.z:F2} kinematic={prop.Body.isKinematic}");
+                long ms = System.DateTime.UtcNow.Ticks / System.TimeSpan.TicksPerMillisecond;
+                Debug.Log($"[D65] D65_STATE t={ms} role={(host ? "host" : "client")} netId={id.netId} name={prop.name}{flag} pos={p.x:F2},{p.y:F2},{p.z:F2} kinematic={prop.Body.isKinematic}");
             }
         }
     }
