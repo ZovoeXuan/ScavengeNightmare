@@ -239,6 +239,8 @@ GameObject:
   - component: {fileID: 429313965}
   - component: {fileID: 429313964}
   - component: {fileID: 429313963}
+  - component: {fileID: 429313967}
+  - component: {fileID: 429313966}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -535,6 +537,36 @@ MonoBehaviour:
   serverInactiveTimeout: 20
   warningAfterSeconds: 3
   disconnectAfterSeconds: 5
+--- !u!114 &429313966
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 429313950}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 96b149f511061407fb54895c057b7736, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Mirror.Transports::Mirror.LatencySimulation
+  wrap: {fileID: 429313953}
+  latency: 100
+  jitter: 0.02
+  jitterSpeed: 1
+  unreliableLoss: 2
+  unreliableScramble: 2
+--- !u!114 &429313967
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 429313950}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3352db146e94f474296c231ea5d332e3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Networking.M1Acceptance
 --- !u!1 &493520428
 GameObject:
   m_ObjectHideFlags: 0

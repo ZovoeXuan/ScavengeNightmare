@@ -48,6 +48,10 @@ namespace ScavengeNightmare.Networking
         private float carryMassKg;
         private float stunUntil;
         private Traits.PlayerTraits traits;
+        private Gameplay.GrabController grab;
+
+        /// <summary>上一帧读到的持有质量，用于判断是否需要重算负重系数（负数 = 尚未初始化）。</summary>
+        private float lastSeenHeldMass = -1f;
 
         /// <summary>D8：角色身份 × 缺点牌的合成倍率。未配置时返回中性值（倍率全 1），行为与 D7 一致。</summary>
         private Traits.PlayerLoadout Loadout => traits != null ? traits.Loadout : Traits.PlayerLoadout.Neutral;
@@ -103,6 +107,7 @@ namespace ScavengeNightmare.Networking
             ApplySettings();
             controller = GetComponent<CharacterController>();
             traits = GetComponent<Traits.PlayerTraits>();
+            grab = GetComponent<Gameplay.GrabController>();
 
             if (playerCamera == null)
             {
@@ -213,9 +218,35 @@ namespace ScavengeNightmare.Networking
                 return;
             }
 
+            SyncCarryMassFromHands();
             ReadInput();
             ApplyLook();
             ApplyMove();
+        }
+
+        /// <summary>
+        /// 把「手里拿着多重」同步进移动端（D11 修的接线缺失）。
+        ///
+        /// 为什么必须在客户端做：玩家移动是客户端权威（NetworkTransform ClientToServer），
+        /// 服务端改自己的 carry 系数对本地速度没有任何影响，所以只能由本地读
+        /// GrabController 的 SyncVar heldMass 自行计算。D9 之前这里从没被调用过，
+        /// 导致「抱着 42kg 雕像走」与空手同速，直接违反 D1 冻结的「跑会被拖累」。
+        /// </summary>
+        private void SyncCarryMassFromHands()
+        {
+            if (grab == null)
+            {
+                return;
+            }
+
+            float mass = grab.IsHolding ? grab.HeldMass : 0f;
+            if (Mathf.Approximately(mass, lastSeenHeldMass))
+            {
+                return;
+            }
+
+            lastSeenHeldMass = mass;
+            SetCarryMass(mass);
         }
 
         /// <summary>身份/牌到达或变更：重算负重系数（瘸子的冲刺禁令在 ReadInput 里实时判断）。</summary>

@@ -162,3 +162,18 @@
   2. 压测只测了 1 房主 + 1 客户端，4 人局带宽是按 ×3 外推，未实测 3 客户端同时收包（D22 补）。
   3. 断线检测依赖 KCP 超时行为；换成 Steam P2P transport 后需重新确认。
   4. 预警/断线 UI 是 IMGUI 临时件，D32 换正式 UI。
+
+## D11 · 2026-10-28 · M1 验收准备（门未过，不打 tag）
+
+- **D11 是什么**：M1 里程碑验收门，执行者是「我」（人类）。五条标准、交付 30 分钟录像 + 验收报告。AI 不参与录像与主观判断，本轮只做「让验收能产出可辩护证据」的部分。
+- **修掉一个拦路 bug**：**负重减速从未接线**。`PlayerMotor.SetCarryMass` 全工程只有 1 个调用点、且在内部传初始值 0；`GrabController` 抓起 42kg 雕像从不通知移动端 → 抱着雕像走与空手同速，直接违反 D1 冻结的「跑会被拖累」。修复 `PlayerMotor.SyncCarryMassFromHands()`，每帧读 `GrabController` 的 SyncVar `heldMass`。必须在客户端做：玩家移动是客户端权威，服务端改系数对本地速度无效。
+- **新增** `M1Acceptance`：重量感量化（`-m1weight`）+ 延迟量化（`-m1lathost/-m1latclient`）；`D11AcceptanceSetup` 幂等装配 + 校验，把 `LatencySimulation` 的 `wrap` 预先连到 `KcpTransport` 并保持禁用。
+- **验收数据**：
+  - 4 人同步：`conns=4 players=4`、四端全连、服务端异常 0
+  - 重量感：投掷跨度 **4.30x**（2kg 15.99 → 42kg 3.72 m/s）、负重最大减速 **42%**，两者单调递减，`M1_WEIGHT_OK`
+  - 延迟：请求 200ms RTT、**实测 250ms**；抓取往返 248ms、投掷往返 251ms（阈值 600ms），`M1_LATENCY_OK`
+  - 摩擦：D6 五条全过
+- **阻塞项**：第 5 条「缺点牌冲突组合有笑点信号」需要 D7 真人数据，未执行 → **不打 tag v0.1-poc**。五条缺一条证据就打 tag 等于自评合格。
+- **顺手清理**：`Builds/Windows/PlaytestLogs/` 里 26 个 CSV 全是我自动化测试的产物，已移入 `_autotest_archive/`，避免与将来真人实测数据混淆。
+- **延迟测试两次假通过（记下来）**：① 只改 `nm.transport` 不改 `Transport.active`（它在 `NetworkManager.Awake` 就已绑定），注入了 200ms 却测出 `rtt=24ms`；② 重量探针首版把玩家挪到物件旁而不改物件位置，服务端持物目标点太远，`breakDistance` 首帧就判脱手，测出 `throw=0 carry=0`。两处都是「看起来在测、其实没测到」。
+- **遗留**：延迟只测 200ms 一档（未测 400ms POOR）；4 人测试是同机 4 进程非跨机；重量感的手感部分无法自动化。
