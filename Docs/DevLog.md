@@ -82,3 +82,13 @@
 - **关键发现**：现有 4 个物件全长宽小于玩家胶囊（直径 1.0m），无论怎么抱都能穿过任何玩家可通行的门洞 ——「窄门卡位」缺物理前提。方案里提出新增「大衣柜 1.6m」与「玻璃花瓶」，需用户拍板。
 - **技术债**：圆桶目前用 CapsuleCollider（Unity Cylinder 图元自带），滚动像胶囊不像桶，需换 Convex MeshCollider，会导致 D4 撞墙基线需重测。
 - 状态：**未动代码**，等三项确认（新增物件 / 换碰撞体 / 是否接数值结算）。
+
+## D6 · 2026-10-28 · 搬运摩擦前 5 条
+
+- **做了什么**：新增 `FrictionTuning`（5 条开关 + 全部阈值）、`FrictionEvents`（统一日志/屏幕提示/程序合成占位音）、`FrictionHUD`；实现 `NarrowDoorWatcher`（位移判卡位）、`RollingProp`、`FragileProp`（相对速度判碎、碎块生成、价值归零）、`DoorTrap`（开合状态机 + 闭合阶段夹取推出 + E 键交互）；`GrabbableProp` 增加持有者与「被撞硬直」判定；`PlayerMotor` 增加 `Stun`；`PropPhysicsProfile` 增加 `isFragile/value/breakSpeed`；新增大衣柜与玻璃花瓶两类物件；圆桶碰撞体改 Convex MeshCollider；场景补 `NarrowDoor` / `SwingDoor` / `FrictionProps`；新增 `D6AutoTest` 与 `D6FrictionSetup`。
+- **验收**：通过。`D6_SETUP_OK` / `D6_VALIDATE_OK tuning=1 barrel=convex vase=fragile cabinet=1 narrowDoor=1 swingDoor=1`；构建 `BUILD_OK`；`-d6test` 连跑两次结果一致：滚动 3.88m（进入滚动态）、22kg 圆桶 10.4 m/s 命中硬直 1.0s、花瓶 8.3 m/s 碎裂且价值归零、门夹强制脱手、大衣柜卡 1.2m 门洞有反馈。D4 基线复测 `closestSide=-0.40` 与换碰撞体前一致。
+- **遗留问题**：
+  1. **物件仍未联网**（最高优先级，见下）：四个客户端各算各的物理，联机时位置与碎裂结果不一致 —— **D7 是 2-3 人联机实测，不补这条 D7 无法进行**。
+  2. 摩擦事件（卡位提示、硬直、碎裂）未跨端同步。
+  3. 音效为程序合成占位、HUD 为临时件，D31/D32 替换。
+  4. 门只有 E 键开关，无交互提示与开关动画。

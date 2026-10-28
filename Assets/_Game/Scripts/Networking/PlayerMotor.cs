@@ -45,6 +45,27 @@ namespace ScavengeNightmare.Networking
         private Vector2 automationMove;
         private bool automationSprint;
         private float carrySpeedMultiplier = 1f;
+        private float stunUntil;
+
+        /// <summary>是否处于被砸硬直中。</summary>
+        public bool IsStunned => Time.time < stunUntil;
+
+        /// <summary>剩余硬直秒数（自动化验收用）。</summary>
+        public float StunRemaining => Mathf.Max(0f, stunUntil - Time.time);
+
+        /// <summary>
+        /// D6 手滑砸脚：被重物命中时进入硬直。硬直期间忽略移动与视角输入，但保留重力与摩擦，
+        /// 保证只是「顿一下」而不是失控飞天。
+        /// </summary>
+        public void Stun(float seconds)
+        {
+            if (seconds <= 0f)
+            {
+                return;
+            }
+
+            stunUntil = Mathf.Max(stunUntil, Time.time + seconds);
+        }
 
         /// <summary>
         /// 自动化验证用输入注入（无键鼠的批处理环境下驱动移动），正式玩法不调用。
@@ -172,6 +193,16 @@ namespace ScavengeNightmare.Networking
 
         private void ReadInput()
         {
+            if (IsStunned)
+            {
+                // 被砸硬直：清空输入，但让重力与速度衰减照常工作。
+                moveInput = Vector2.zero;
+                lookInput = Vector2.zero;
+                jumpQueued = false;
+                sprintHeld = false;
+                return;
+            }
+
             if (automationOverride)
             {
                 moveInput = automationMove;

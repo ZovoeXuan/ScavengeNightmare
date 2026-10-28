@@ -171,6 +171,7 @@ namespace ScavengeNightmare.Gameplay
 
             held = target;
             held.SetHeld(true);
+            held.SetHolder(this);
             held.SetHighlight(false);
             SetFocus(null);
 
@@ -204,6 +205,7 @@ namespace ScavengeNightmare.Gameplay
             }
 
             prop.SetHeld(false);
+            prop.SetHolder(null);
 
             Rigidbody body = prop.Body;
             PropPhysicsProfile profile = prop.Profile;

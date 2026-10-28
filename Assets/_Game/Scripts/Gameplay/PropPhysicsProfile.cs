@@ -43,6 +43,13 @@ namespace ScavengeNightmare.Gameplay
         [Range(0f, 3f)] public float throwSpin = 0.6f;
         public float maxThrowSpeed = 16f;
 
+        [Header("价值与易碎（D6）")]
+        public bool isFragile;
+        [Tooltip("标价，仅供后续结算读取，D6 只做到碎后归零")]
+        public int value;
+        [Tooltip("碰撞相对速度超过该值就碎（m/s）")]
+        public float breakSpeed = 3f;
+
         [Header("表现")]
         public Color highlightTint = new Color(0.55f, 0.85f, 1f, 1f);
 

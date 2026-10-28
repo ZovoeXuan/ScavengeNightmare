@@ -1,3 +1,4 @@
+using ScavengeNightmare.Networking;
 using UnityEngine;
 
 namespace ScavengeNightmare.Gameplay
@@ -30,6 +31,43 @@ namespace ScavengeNightmare.Gameplay
         public Rigidbody Body => body;
         public float Mass => body != null ? body.mass : 0f;
         public bool IsHeld => held;
+
+        /// <summary>当前持有者（谁正抓着它）。门夹等事件需要能反向让持有者脱手。</summary>
+        public GrabController Holder { get; private set; }
+
+        public void SetHolder(GrabController value)
+        {
+            Holder = value;
+        }
+
+        /// <summary>
+        /// D6 手滑砸脚：被足够快、足够重的物件撞到玩家时触发硬直。
+        /// 判定放在物件侧，因为 CharacterController 自身不会收到刚体碰撞回调。
+        /// </summary>
+        private void OnCollisionEnter(Collision collision)
+        {
+            if (!FrictionEvents.Tuning.enableImpactStun || profile == null)
+            {
+                return;
+            }
+
+            float speed = collision.relativeVelocity.magnitude;
+            if (speed < FrictionEvents.Tuning.stunSpeedThreshold || profile.mass < FrictionEvents.Tuning.stunMinMass)
+            {
+                return;
+            }
+
+            PlayerMotor motor = collision.collider.GetComponentInParent<PlayerMotor>();
+            if (motor == null)
+            {
+                return;
+            }
+
+            bool heavy = profile.mass >= FrictionEvents.Tuning.stunHeavyMass;
+            float seconds = heavy ? FrictionEvents.Tuning.stunHeavyDuration : FrictionEvents.Tuning.stunDuration;
+            motor.Stun(seconds);
+            FrictionEvents.Report("手滑砸脚", $"{profile.displayName} 砸中玩家（{speed:F1} m/s）硬直 {seconds:F1}s", 420f);
+        }
 
         private void Awake()
         {

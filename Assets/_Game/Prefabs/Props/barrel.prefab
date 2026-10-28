@@ -10,10 +10,11 @@ GameObject:
   m_Component:
   - component: {fileID: 4996662520879320037}
   - component: {fileID: 7177450639764357307}
-  - component: {fileID: 4040267258343720814}
   - component: {fileID: 8354514378943033229}
   - component: {fileID: 8404001575091665002}
   - component: {fileID: 411710673313366289}
+  - component: {fileID: 4046910612841649481}
+  - component: {fileID: 6450071567233142340}
   m_Layer: 0
   m_Name: barrel
   m_TagString: Untagged
@@ -44,29 +45,6 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7816713600684826587}
   m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
---- !u!136 &4040267258343720814
-CapsuleCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7816713600684826587}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 2
-  m_Radius: 0.5
-  m_Height: 2
-  m_Direction: 1
-  m_Center: {x: 0, y: 0, z: 0}
 --- !u!23 &8354514378943033229
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -157,3 +135,37 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.GrabbableProp
   profile: {fileID: 11400000, guid: 38e265f8a08963441871d171ee9c52c0, type: 2}
   renderers: []
+--- !u!64 &4046910612841649481
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7816713600684826587}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 5
+  m_Convex: 1
+  m_CookingOptions: 30
+  m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!114 &6450071567233142340
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7816713600684826587}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 08f4e1948069eb848a4e02ed8591b370, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.RollingProp

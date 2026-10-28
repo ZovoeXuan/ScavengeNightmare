@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd0f79c3647a7eb4d95f9dff414c5686, type: 3}
+  m_Name: FrictionTuning
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.FrictionTuning
+  enableNarrowDoor: 1
+  jamContactSeconds: 0.3
+  enableImpactStun: 1
+  stunSpeedThreshold: 4
+  stunMinMass: 5
+  stunDuration: 0.6
+  stunHeavyMass: 20
+  stunHeavyDuration: 1
+  enableRolling: 1
+  rollingStartSpeed: 1.5
+  enableDoorTrap: 1
+  doorPushMargin: 0.08
+  enableFragile: 1
+  fragmentCount: 4
+  fragmentLifetime: 3
+  enablePlaceholderAudio: 1
