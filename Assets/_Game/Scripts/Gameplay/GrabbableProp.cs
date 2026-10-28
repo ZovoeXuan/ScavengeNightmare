@@ -21,6 +21,7 @@ namespace ScavengeNightmare.Gameplay
         [SerializeField] private Renderer[] renderers;
 
         private Rigidbody body;
+        private NetworkedProp networked;
         private MaterialPropertyBlock block;
         private Color[] baseColors;
         private PhysicsMaterial runtimeSurface;
@@ -72,6 +73,7 @@ namespace ScavengeNightmare.Gameplay
         private void Awake()
         {
             body = GetComponent<Rigidbody>();
+            networked = GetComponent<NetworkedProp>();
 
             if (renderers == null || renderers.Length == 0)
             {
@@ -144,6 +146,21 @@ namespace ScavengeNightmare.Gameplay
         public void SetHeld(bool value)
         {
             held = value;
+
+            // 抓取即接管权威，松手交回房主；未联网时 networked 为 null，行为不变
+            if (networked == null)
+            {
+                return;
+            }
+
+            if (value)
+            {
+                networked.RequestAuthority();
+            }
+            else
+            {
+                networked.ReleaseAuthority();
+            }
         }
 
         public void SetHighlight(bool on)

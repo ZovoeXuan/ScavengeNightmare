@@ -11,6 +11,7 @@ namespace ScavengeNightmare.Gameplay
     public sealed class FragileProp : MonoBehaviour
     {
         private GrabbableProp grabbable;
+        private NetworkedProp networked;
         private Renderer[] renderers;
 
         public bool Broken { get; private set; }
@@ -32,6 +33,7 @@ namespace ScavengeNightmare.Gameplay
         private void Awake()
         {
             grabbable = GetComponent<GrabbableProp>();
+            networked = GetComponent<NetworkedProp>();
             renderers = GetComponentsInChildren<Renderer>(true);
         }
 
@@ -53,10 +55,24 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
-            Shatter(collision.relativeVelocity.magnitude);
+            // 联网时交给服务端广播，保证四端同时碎；单机则本地直接碎
+            if (networked != null)
+            {
+                networked.ShatterAuthoritative(collision.relativeVelocity.magnitude);
+            }
+            else
+            {
+                ApplyBreak(collision.relativeVelocity.magnitude);
+            }
         }
 
         public void Shatter(float impactSpeed = 0f)
+        {
+            ApplyBreak(impactSpeed);
+        }
+
+        /// <summary>真正的破碎表现，幂等：四端各自调用一次也不会重复生成碎块。</summary>
+        public void ApplyBreak(float impactSpeed = 0f)
         {
             if (Broken)
             {

@@ -92,3 +92,14 @@
   2. 摩擦事件（卡位提示、硬直、碎裂）未跨端同步。
   3. 音效为程序合成占位、HUD 为临时件，D31/D32 替换。
   4. 门只有 E 键开关，无交互提示与开关动画。
+
+## D6.5 · 2026-10-28 · 物件联网（半成品，同步质量不达标）
+
+- **已完成**：
+  1. 6 个物件 prefab 全部加上 `NetworkIdentity` + `NetworkTransformReliable` + `NetworkedProp`，assetId 已落盘，并注册进 `NetworkManager.spawnPrefabs`。
+  2. 放弃「场景里摆好的实例直接同步」——Mirror 要求场景对象有 editor 期分配的 sceneId，prefab 实例拿不到（实测 netId 恒为 0，客户端还会在 `NetworkClient.Broadcast` 每帧空引用）。改为 `PropSpawner` 在服务端开局从 prefab 实例化并 `NetworkServer.Spawn`，11 个物件正常生成（`D65_SPAWNED count=11`）。
+  3. 所有权模型跑通：出生交给房主，抓取时转给抓的人，松手交回房主；非持有端刚体设为 kinematic。双端 netId 一致、初始位置一致、客户端 `kinematic=True` 符合预期。
+- **未达标（阻塞 D7）**：位移同步严重滞后。同一物件同一时刻，主机在 x=13.3m，客户端才到 0.9m（同索引位置差均值 8.67m），表现为客户端极慢地追赶。已排除：连接失败、netId 不一致、初始位置不同步。
+- **根因分析**：`syncDirection` 在运行时按「谁持有」切换（房主持有 ServerToClient / 远程客户端持有 ClientToServer）。切换后 NetworkTransformReliable 的可靠基线会重置，插值按旧快照慢慢爬。
+- **下一步方案（未实施）**：改为**服务端权威**——抓取走 Command（请求抓取 → 服务端沿玩家朝向做速度控制 → 投掷由服务端施加冲量），`NetworkTransform` 保持默认 ServerToClient 不再运行时切换。改动集中在 `GrabController`，估计 3–4h，能一次性消除同步方向问题。
+- **当前代码状态**：可编译、可构建、物件能生成并同步初始状态；抓取后的位移同步不可用。**D7 不能在此状态下开**。
