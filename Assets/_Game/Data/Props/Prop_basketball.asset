@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 516063a2d35eb4346bd71406f043d549, type: 3}
+  m_Name: Prop_basketball
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.PropPhysicsProfile
+  id: basketball
+  displayName: "\u7BEE\u7403"
+  propType: 2
+  gripOffset: {x: 0, y: 0, z: 0}
+  mass: 0.6
+  linearDamping: 0.02
+  angularDamping: 0.08
+  dynamicFriction: 0.2
+  staticFriction: 0.28
+  bounciness: 0.25
+  grabAcceleration: 55
+  grabMaxSpeed: 9
+  holdDistance: 1.6
+  breakDistance: 2.6
+  throwImpulse: 30
+  throwSpin: 0.6
+  maxThrowSpeed: 16
+  isFragile: 0
+  value: 80
+  breakSpeed: 3
+  highlightTint: {r: 0.85, g: 0.62, b: 0.45, a: 1}

@@ -1,3 +1,4 @@
+using Mirror;
 using UnityEngine;
 
 namespace ScavengeNightmare.Gameplay
@@ -23,13 +24,29 @@ namespace ScavengeNightmare.Gameplay
 
         private void OnTriggerEnter(Collider other)
         {
-            if (other.GetComponentInParent<Networking.PlayerMotor>() == null)
+            Networking.PlayerMotor motor = other.GetComponentInParent<Networking.PlayerMotor>();
+            if (motor == null)
             {
                 return;
             }
 
             inside++;
             Debug.Log($"[D12] D12_EVAC_ENTER player={other.name} inside={inside}");
+
+            // D13：带货进入即结算。价值由 EvacSettlement 从物件档读取，
+            // 这里不参与任何数值计算，只负责「把货交出去」这个动作。
+            if (!NetworkServer.active)
+            {
+                return;
+            }
+
+            GrabController grab = motor.GetComponent<GrabController>();
+            GrabbableProp carried = grab != null ? grab.HeldProp : null;
+
+            if (carried != null && EvacSettlement.Instance != null)
+            {
+                EvacSettlement.Instance.Deliver(carried);
+            }
         }
 
         private void OnTriggerExit(Collider other)

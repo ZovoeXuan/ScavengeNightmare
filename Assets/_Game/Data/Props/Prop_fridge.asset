@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 516063a2d35eb4346bd71406f043d549, type: 3}
+  m_Name: Prop_fridge
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.PropPhysicsProfile
+  id: fridge
+  displayName: "\u51B0\u7BB1"
+  propType: 3
+  gripOffset: {x: 0.32, y: 0, z: 0}
+  mass: 70
+  linearDamping: 0.05
+  angularDamping: 0.4
+  dynamicFriction: 0.8
+  staticFriction: 0.88
+  bounciness: 0.05
+  grabAcceleration: 32
+  grabMaxSpeed: 5.5
+  holdDistance: 1.9
+  breakDistance: 2.2
+  throwImpulse: 95
+  throwSpin: 0.6
+  maxThrowSpeed: 16
+  isFragile: 0
+  value: 850
+  breakSpeed: 3
+  highlightTint: {r: 0.55, g: 0.56, b: 0.6, a: 1}

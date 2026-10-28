@@ -36,6 +36,24 @@ namespace ScavengeNightmare.Gameplay
         /// <summary>当前持有者（谁正抓着它）。门夹等事件需要能反向让持有者脱手。</summary>
         public GrabController Holder { get; private set; }
 
+        /// <summary>
+        /// 当前价值（D13 结算口径）：易碎件碎后必须归零，所以不能直接读 Profile.value。
+        /// 没有易碎组件时才是表里的原价。
+        /// </summary>
+        public int CurrentValue
+        {
+            get
+            {
+                FragileProp fragile = GetComponent<FragileProp>();
+                if (fragile != null)
+                {
+                    return fragile.CurrentValue;
+                }
+
+                return profile != null ? profile.value : 0;
+            }
+        }
+
         public void SetHolder(GrabController value)
         {
             Holder = value;

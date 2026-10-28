@@ -53,6 +53,9 @@ namespace ScavengeNightmare.Gameplay
         public GrabbableProp Focused => focused;
         public bool HasFocus => focused != null;
 
+        /// <summary>当前手持物件（D13 撤离结算用它读价值）。没拿东西时为 null。</summary>
+        public GrabbableProp HeldProp => isHolding ? heldProp : null;
+
         private void Awake()
         {
             if (viewCamera == null)

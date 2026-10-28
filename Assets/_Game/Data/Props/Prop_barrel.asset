@@ -14,6 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.PropPhysicsProfile
   id: barrel
   displayName: "\u5706\u6876"
+  propType: 2
+  gripOffset: {x: 0, y: 0, z: 0}
   mass: 22
   linearDamping: 0.05
   angularDamping: 0.15
@@ -27,4 +29,7 @@ MonoBehaviour:
   throwImpulse: 70
   throwSpin: 0.6
   maxThrowSpeed: 16
-  highlightTint: {r: 0.55, g: 0.85, b: 1, a: 1}
+  isFragile: 0
+  value: 150
+  breakSpeed: 3
+  highlightTint: {r: 0.85, g: 0.62, b: 0.45, a: 1}

@@ -13,7 +13,9 @@ MonoBehaviour:
   m_Name: Prop_statue
   m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.PropPhysicsProfile
   id: statue
-  displayName: "\u96D5\u50CF"
+  displayName: "\u77F3\u96D5\u50CF"
+  propType: 3
+  gripOffset: {x: 0, y: 0, z: 0}
   mass: 42
   linearDamping: 0.05
   angularDamping: 0.8
@@ -27,4 +29,7 @@ MonoBehaviour:
   throwImpulse: 120
   throwSpin: 0.6
   maxThrowSpeed: 16
-  highlightTint: {r: 0.55, g: 0.85, b: 1, a: 1}
+  isFragile: 0
+  value: 900
+  breakSpeed: 3
+  highlightTint: {r: 0.55, g: 0.56, b: 0.6, a: 1}

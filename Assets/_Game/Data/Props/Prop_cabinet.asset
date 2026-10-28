@@ -14,6 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.PropPhysicsProfile
   id: cabinet
   displayName: "\u5927\u8863\u67DC"
+  propType: 3
+  gripOffset: {x: 0.35, y: 0, z: 0}
   mass: 35
   linearDamping: 0.05
   angularDamping: 0.7
@@ -28,6 +30,6 @@ MonoBehaviour:
   throwSpin: 0.6
   maxThrowSpeed: 16
   isFragile: 0
-  value: 0
+  value: 400
   breakSpeed: 3
-  highlightTint: {r: 0.55, g: 0.85, b: 1, a: 1}
+  highlightTint: {r: 0.55, g: 0.56, b: 0.6, a: 1}

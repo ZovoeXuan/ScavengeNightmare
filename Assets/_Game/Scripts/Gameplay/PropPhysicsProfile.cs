@@ -3,6 +3,19 @@ using UnityEngine;
 namespace ScavengeNightmare.Gameplay
 {
     /// <summary>
+    /// 物件类型（D13）。四类决定「玩家一眼能认出该怎么处理它」：
+    ///   易碎 = 别摔；滚动 = 会跑；重型 = 搬不动；普通 = 随手拿。
+    /// 类型同时驱动白盒配色与行为组件挂载，改这一个字段即可切换整条链路。
+    /// </summary>
+    public enum PropType
+    {
+        Normal,
+        Fragile,
+        Rolling,
+        Heavy,
+    }
+
+    /// <summary>
     /// 物件物理档（D4 起）：质量、摩擦、抓握与投掷参数的数据表条目。
     /// 手感三原则之一「一切手感参数进数据表，改表即生效」的落地点。
     /// </summary>
@@ -12,6 +25,13 @@ namespace ScavengeNightmare.Gameplay
         [Header("身份")]
         public string id = "prop";
         public string displayName = "物件";
+
+        [Header("物件类型（D13）")]
+        public PropType propType = PropType.Normal;
+
+        [Tooltip("抓握点：物件本地坐标偏移。持物时会把这个点对准准星，"
+               + "让长条物件（如电视）横着拿、大件（如冰箱）抓侧面。")]
+        public Vector3 gripOffset = Vector3.zero;
 
         [Header("刚体")]
         [Tooltip("质量（kg）。目测 1-3kg 的罐头、8-12kg 的纸箱、20-30kg 的圆桶、40kg 以上的雕像")]
