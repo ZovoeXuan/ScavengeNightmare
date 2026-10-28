@@ -222,7 +222,7 @@ namespace ScavengeNightmare.Gameplay
 
                 Vector3 p = prop.transform.position;
                 string flag = target != null && prop == target ? "*" : string.Empty;
-                long ms = System.DateTime.UtcNow.Ticks / System.TimeSpan.TicksPerMillisecond;
+                long ms = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 Debug.Log($"[D65] D65_STATE t={ms} role={(host ? "host" : "client")} netId={id.netId} name={prop.name}{flag} pos={p.x:F2},{p.y:F2},{p.z:F2} kinematic={prop.Body.isKinematic}");
             }
         }

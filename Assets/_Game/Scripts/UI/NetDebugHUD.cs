@@ -1,4 +1,5 @@
 using Mirror;
+using ScavengeNightmare.Networking;
 using UnityEngine;
 
 namespace ScavengeNightmare.UI
@@ -53,10 +54,13 @@ namespace ScavengeNightmare.UI
 
             EnsureStyles();
 
-            GUILayout.BeginArea(new Rect(12f, 12f, 320f, 260f), boxStyle);
-            GUILayout.Label("<b>D3 联机调试</b>", labelStyle);
+            // 位置让给 TraitHUD（左上角第一格），本面板在其下方。
+            // D9 前三个面板都挤在 (12,12) 完全重叠，身份面板会被联机面板盖住。
+            GUILayout.BeginArea(new Rect(12f, 130f, 320f, 268f), boxStyle);
+            GUILayout.Label("<b>联机调试</b>（F1 收起）", labelStyle);
             GUILayout.Label(ModeText(), labelStyle);
             GUILayout.Label($"RTT：{RttText()}", labelStyle);
+            GUILayout.Label($"质量：{QualityText()}", labelStyle);
             GUILayout.Label($"连接数：{ConnectionText()}", labelStyle);
             GUILayout.Label($"本地玩家：{LocalPlayerText()}", labelStyle);
             GUILayout.Space(6f);
@@ -157,7 +161,29 @@ namespace ScavengeNightmare.UI
                 return "测量中";
             }
 
-            return $"{Mathf.RoundToInt((float)(rtt * 1000.0))} ms";
+            return $"{Mathf.RoundToInt((float)(rtt * 1000.0))} ms（抖动 {Mathf.RoundToInt((float)(NetworkTime.rttVariance * 1000.0))} ms）";
+        }
+
+        /// <summary>D9：连接质量取自 NetworkHealthService（底层是 Mirror 内建的 rtt+jitter 分档）。</summary>
+        private static string QualityText()
+        {
+            NetworkHealthService health = NetworkHealthService.Instance;
+            if (health == null)
+            {
+                return "— （未挂载健康服务）";
+            }
+
+            Color c = health.QualityColor();
+            string hex = ColorUtility.ToHtmlStringRGB(c);
+            string text = health.QualityText();
+
+            // Host 模式本地连接没有 rtt，质量分档无意义，直接说明
+            if (health.IsHost)
+            {
+                return "本地房主（无网络延迟）";
+            }
+
+            return $"<color=#{hex}>{text}</color>";
         }
 
         private static string ConnectionText()

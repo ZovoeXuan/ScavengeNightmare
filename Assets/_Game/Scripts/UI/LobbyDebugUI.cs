@@ -1,3 +1,4 @@
+using Mirror;
 using ScavengeNightmare.Networking;
 using Steamworks;
 using UnityEngine;
@@ -14,10 +15,46 @@ namespace ScavengeNightmare.UI
         private string joinLobbyId = string.Empty;
         private Vector2 memberScroll;
         private static Font uiFont;
+        private static GUIStyle hintStyle;
+
+        private static GUIStyle HintStyle
+        {
+            get
+            {
+                if (hintStyle == null)
+                {
+                    hintStyle = new GUIStyle(GUI.skin.label)
+                    {
+                        fontSize = 12,
+                        richText = true
+                    };
+
+                    if (uiFont != null)
+                    {
+                        hintStyle.font = uiFont;
+                    }
+                }
+
+                return hintStyle;
+            }
+        }
+
+        // D9：联机进行中大厅面板已无用，且它 520x560 会盖住身份/联机面板。
+        // 默认自动隐藏，F2 强制唤出（例如断线后想手动查大厅状态）。
+        private bool forceVisible;
 
         private void Awake()
         {
             service = GetComponent<SteamLobbyService>();
+        }
+
+        private void Update()
+        {
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            if (kb != null && kb.f2Key.wasPressedThisFrame)
+            {
+                forceVisible = !forceVisible;
+            }
         }
 
         private void OnGUI()
@@ -28,6 +65,15 @@ namespace ScavengeNightmare.UI
             }
 
             EnsureFont();
+
+            bool inSession = NetworkServer.active || NetworkClient.active;
+            if (inSession && !forceVisible)
+            {
+                // 只留一行提示，告诉玩家面板去哪了
+                GUI.Label(new Rect(12f, Screen.height - 150f, 420f, 20f),
+                    "<color=#AAAAAA>已在联机中，大厅面板已隐藏（F2 唤出）</color>", HintStyle);
+                return;
+            }
 
             GUILayout.BeginArea(new Rect(12, 12, 520, 560), GUI.skin.box);
             GUILayout.BeginVertical();

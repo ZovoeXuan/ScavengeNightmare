@@ -236,6 +236,9 @@ GameObject:
   - component: {fileID: 429313960}
   - component: {fileID: 429313961}
   - component: {fileID: 429313962}
+  - component: {fileID: 429313965}
+  - component: {fileID: 429313964}
+  - component: {fileID: 429313963}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -285,7 +288,7 @@ MonoBehaviour:
   DualMode: 1
   NoDelay: 1
   Interval: 10
-  Timeout: 10000
+  Timeout: 4000
   RecvBufferSize: 7361536
   SendBufferSize: 7361536
   FastResend: 2
@@ -320,8 +323,8 @@ MonoBehaviour:
   transport: {fileID: 429313953}
   networkAddress: localhost
   maxConnections: 4
-  disconnectInactiveConnections: 0
-  disconnectInactiveTimeout: 60
+  disconnectInactiveConnections: 1
+  disconnectInactiveTimeout: 20
   exceptionsDisconnect: 1
   authenticator: {fileID: 0}
   offlineScene: 
@@ -492,6 +495,46 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.PlaytestRecorder
   heartbeatSeconds: 30
   flushSeconds: 45
+--- !u!114 &429313963
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 429313950}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a14e595887d7cc149bd82131104e03fe, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Networking.D9DisconnectTest
+--- !u!114 &429313964
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 429313950}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 589552a003b4fc04d9abe2c45f7ed221, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Networking.D9StressTest
+--- !u!114 &429313965
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 429313950}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 188bb6546b2d0d6419a2d191af15b53a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Networking.NetworkHealthService
+  kcpTimeoutMs: 4000
+  serverInactiveTimeout: 20
+  warningAfterSeconds: 3
+  disconnectAfterSeconds: 5
 --- !u!1 &493520428
 GameObject:
   m_ObjectHideFlags: 0
@@ -1810,6 +1853,51 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1940952925
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1940952927}
+  - component: {fileID: 1940952926}
+  m_Layer: 0
+  m_Name: ConnectionStatusHUD
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1940952926
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1940952925}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 27ccee5ba94d597459384dc33aa0f43c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.UI.ConnectionStatusHUD
+  health: {fileID: 0}
+--- !u!4 &1940952927
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1940952925}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2021654810
 GameObject:
   m_ObjectHideFlags: 0
@@ -2134,3 +2222,4 @@ SceneRoots:
   - {fileID: 1546832566}
   - {fileID: 1025157897}
   - {fileID: 1862605770}
+  - {fileID: 1940952927}
