@@ -16,6 +16,7 @@ GameObject:
   - component: {fileID: 2665373056805183902}
   - component: {fileID: 1463503638071107648}
   - component: {fileID: 5846211142032120334}
+  - component: {fileID: 312590879304819683}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -154,6 +155,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f4fa9b2326baf664ba10911158c02ac2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.GrabController
+  syncMethod: 0
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
   viewCamera: {fileID: 0}
   motor: {fileID: 0}
   grabRange: 3.2
@@ -161,6 +166,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   followStiffness: 16
+  holdHeightOffset: 0.45
 --- !u!114 &1463503638071107648
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -194,6 +200,24 @@ MonoBehaviour:
   defaultIndex: 0
   localGate: {fileID: 2665373056805183902}
   showPanel: 1
+  allowHotSwitch: 1
+--- !u!114 &312590879304819683
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 695582084772269870}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4db55d9cb0cc69e4aaa6479d272ef594, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.PlaytestMarker
+  syncMethod: 0
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  showHints: 1
 --- !u!1 &2376511499117349623
 GameObject:
   m_ObjectHideFlags: 0

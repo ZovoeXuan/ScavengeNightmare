@@ -1,3 +1,4 @@
+using System;
 using ScavengeNightmare.Gameplay;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -21,8 +22,12 @@ namespace ScavengeNightmare.UI
 
         [SerializeField] private bool showPanel = true;
 
+        [Tooltip("允许数字键热切换。实测（D7）时用启动参数 -feel= 锁定，防止误按污染数据")]
+        [SerializeField] private bool allowHotSwitch = true;
+
         private int current = -1;
         private GUIStyle style;
+        private string lockNote = string.Empty;
 
         public FeelScheme Current => current >= 0 && schemes != null && current < schemes.Length ? schemes[current] : null;
         public string CurrentId => Current != null ? Current.schemeId : "default";
@@ -59,11 +64,40 @@ namespace ScavengeNightmare.UI
             {
                 Select(Mathf.Clamp(defaultIndex, 0, schemes.Length - 1));
             }
+
+            ApplyLaunchOverride();
+        }
+
+        /// <summary>
+        /// 启动参数 -feel=light / solid / heavy：选方案并锁定键盘。
+        /// D7 实测必须这样起包，否则玩家战斗中误按 1/2/3 会让两轮数据混在一起。
+        /// </summary>
+        private void ApplyLaunchOverride()
+        {
+            foreach (string arg in Environment.GetCommandLineArgs())
+            {
+                if (!arg.StartsWith("-feel=", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string id = arg.Substring("-feel=".Length).Trim();
+                if (!SelectById(id))
+                {
+                    Debug.LogWarning($"[D5] 启动参数 -feel={id} 未匹配到任何方案");
+                    return;
+                }
+
+                allowHotSwitch = false;
+                lockNote = $"（已按 -feel={id} 锁定）";
+                Debug.Log($"[D5] D5_FEEL_LOCKED scheme={id}");
+                return;
+            }
         }
 
         private void Update()
         {
-            if (!IsLocal || schemes == null)
+            if (!IsLocal || schemes == null || !allowHotSwitch)
             {
                 return;
             }
@@ -130,7 +164,8 @@ namespace ScavengeNightmare.UI
 
             float height = 66f;
             Rect box = new Rect(12f, Screen.height - height - 12f, 380f, height);
-            GUI.Label(box, $"<b>手感方案：{scheme.displayName}</b>（{current + 1}/{schemes.Length}，数字键切换）\n笑点侧重：{scheme.comedyNotes}", style);
+            string hint = allowHotSwitch ? $"（{current + 1}/{schemes.Length}，数字键切换）" : lockNote;
+            GUI.Label(box, $"<b>手感方案：{scheme.displayName}</b>{hint}\n笑点侧重：{scheme.comedyNotes}", style);
         }
 
         private void EnsureStyle()

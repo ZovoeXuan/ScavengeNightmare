@@ -226,6 +226,12 @@ namespace ScavengeNightmare.Gameplay
             // 门夹等外部事件需要能反向让持有者脱手
             prop.SetHolder(this);
             prop.Body.WakeUp();
+
+            PlaytestRecorder recorder = PlaytestRecorder.Instance;
+            if (recorder != null)
+            {
+                recorder.NoteGrab(recorder.LabelOf(netIdentity), heldMass);
+            }
         }
 
         private void ServerRelease(bool asThrow)
@@ -253,6 +259,12 @@ namespace ScavengeNightmare.Gameplay
             body.WakeUp();
             body.linearVelocity = AimDirection() * FeelSettings.ThrowSpeed(profile);
             body.angularVelocity = Random.onUnitSphere * FeelSettings.ThrowSpin(profile.throwSpin);
+
+            PlaytestRecorder recorder = PlaytestRecorder.Instance;
+            if (recorder != null)
+            {
+                recorder.NoteThrow(recorder.LabelOf(netIdentity), prop.Mass, body.linearVelocity.magnitude);
+            }
         }
 
         private void ServerHoldStep()

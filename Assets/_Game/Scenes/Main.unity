@@ -235,6 +235,7 @@ GameObject:
   - component: {fileID: 429313957}
   - component: {fileID: 429313960}
   - component: {fileID: 429313961}
+  - component: {fileID: 429313962}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -477,6 +478,20 @@ MonoBehaviour:
   - Prefab: {fileID: 1069464594523878681, guid: fba9c21253cc6e24395048d95b4d86b3, type: 3}
     Position: {x: 3.2, y: 0.35, z: 5.5}
     Euler: {x: 0, y: 0, z: 0}
+--- !u!114 &429313962
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 429313950}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aaad76ee226f15343b4e3cd902f7a002, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.PlaytestRecorder
+  heartbeatSeconds: 30
+  flushSeconds: 45
 --- !u!1 &493520428
 GameObject:
   m_ObjectHideFlags: 0

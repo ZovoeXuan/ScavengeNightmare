@@ -14,6 +14,7 @@ namespace ScavengeNightmare.Gameplay
     public sealed class D65AutoTest : MonoBehaviour
     {
         private bool host;
+        private bool ptTest;
         private float deadline;
         private PlayerMotor motor;
         private GrabController grab;
@@ -27,6 +28,14 @@ namespace ScavengeNightmare.Gameplay
                 if (string.Equals(a, "-d65host", System.StringComparison.OrdinalIgnoreCase))
                 {
                     host = true;
+                }
+            }
+
+            foreach (string a in args)
+            {
+                if (string.Equals(a, "-pttest", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    ptTest = true;
                 }
             }
 
@@ -78,6 +87,17 @@ namespace ScavengeNightmare.Gameplay
                 yield break;
             }
 
+            if (!host && ptTest)
+            {
+                yield return new WaitForSeconds(1.2f);
+                PlaytestMarker clientMarker = NetworkClient.localPlayer.GetComponent<PlaytestMarker>();
+                if (clientMarker != null)
+                {
+                    clientMarker.MarkFromLocal(PlaytestRecorder.CatIssue);
+                    Debug.Log("[D7] D7_MARK_SENT role=client cat=issue");
+                }
+            }
+
             if (host)
             {
                 motor = NetworkClient.localPlayer.GetComponent<PlayerMotor>();
@@ -120,6 +140,18 @@ namespace ScavengeNightmare.Gameplay
                 yield return new WaitForSeconds(0.2f);
                 bool grabbed = grab.TryGrab(target);
                 Debug.Log($"[D65] D65_GRAB grabbed={grabbed} prop={target.name}");
+
+                if (ptTest)
+                {
+                    PlaytestMarker marker = NetworkClient.localPlayer.GetComponent<PlaytestMarker>();
+                    if (marker != null)
+                    {
+                        marker.MarkFromLocal(PlaytestRecorder.CatLaugh);
+                        yield return new WaitForSeconds(0.3f);
+                        marker.MarkFromLocal(PlaytestRecorder.CatLaugh);
+                        Debug.Log("[D7] D7_MARK_SENT role=host cat=laugh x2");
+                    }
+                }
                 yield return new WaitForSeconds(0.5f);
                 Debug.Log($"[D65] D65_HOLD_STABLE held={(grab.IsHolding)}");
 

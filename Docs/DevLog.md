@@ -116,3 +116,23 @@
 - **回归**：D6 五条摩擦全部通过（滚动 3.88m / 硬直 1.0s / 碎裂价值归零 / 门夹脱手 / 窄门卡位）。改造中一度丢失 `GrabbableProp.Holder` 导致门夹找不到人脱手（`D6_CLAMP_FAIL`），已补回。
 - **已知代价**：远程客户端抓着物件时，他看到的物件是自己服务端位置的延迟回放（约 75–100ms）；本地房主无此问题。D9 可考虑加客户端预测。
 - **结论**：D6.5 达标，**D7 可以开**。
+
+## D6.5 人工验收 · 2026-10-28 · 三条全过
+
+- **验收内容**（两个窗口，Host + Client 127.0.0.1）：
+  1. 房主抓起圆桶走动，客户端同步跟随（允许轻微拖尾）—— 通过
+  2. 客户端抓取物件，房主可见 —— 通过
+  3. 摔碎花瓶，两端同时碎 —— 通过
+- **结论**：D6.5 从「半成品」转正为「已完成」，物件联网可用于 D7。
+
+## D7 执行件 · 2026-10-28 · 实测记录器 + 执行清单
+
+- **背景**：D7 的执行角色是「人 + 朋友」，AI 不参与实测。这一轮只交付「让实测产出可用数据」的工具与判据。
+- **新增 `PlaytestRecorder`**（挂 NetworkManager，服务端生效）：把三类事实落成 CSV——人工标记（笑点/问题/金句）、摩擦事件（订阅 `FrictionEvents.Reported`）、动作计数（抓取/投掷/在线人数心跳）。每 45 秒整表重写防崩溃丢数据；`session_end` 直接给时长、各类计数与每人笑点数。CSV 落在包目录 `PlaytestLogs/session_yyyyMMdd_HHmmss.csv`，UTF-8 BOM 供 Excel 直开。
+- **新增 `PlaytestMarker`**（挂玩家 prefab）：F5 笑点 / F6 问题 / F7 金句，走 `[Command]` 上报房主记录器，本地即时回显「已记 笑点 #3 20:14:33」，右下角常驻提示与本次计数。玩家自己按，不需要旁观记录员。
+- **`FeelSwitchHUD` 支持 `-feel=` 启动锁定**：D7 两轮分别用 `-feel=light` / `-feel=heavy` 起包，键盘 1/2/3 失效，防止战斗中误切污染数据。实测证实锁定作用于玩法而不只是 UI：沉重方案投掷 22kg 圆桶 1.9 m/s（=70×0.6÷22），轻快为 4.1。
+- **玩家代号规则**：`P1` 固定为房主（按 `connectionToClient == NetworkServer.localConnection` 判定），其余按进场顺序 `P2..P4`。首版按「首次动作」排序导致客户端被编成 P1，已修正。
+- **验收**：`D7_VALIDATE_OK recorder=1 marker=1 feelHud=1`；构建 `BUILD_OK`；双端跑 `-d65host -pttest` / `-d65client -pttest` 得到 17 行 CSV：`session_start` → `feel` → `player_join` → `issue(P2)` → `grab/laugh(P1)×2` → `friction×7` → `throw` → `player_leave` → `session_end(laughs=2 issues=1 grabs=1 throws=1)`。客户端标记经 Command 落到房主 CSV，与真人按键同一条路径。
+- **新增 `Docs/Playtest_D7.md`**：联机方式三选一（推荐虚拟局域网）、四硬条件、两轮启动参数、35 分钟四段流程脚本、逐条观察判据、记录表模板、局均笑点公式与停机规则、已知限制。
+- **产出测试包**：`Builds/ScavengeNightmare_D7_20261028.zip`（42MB，剔除了 BurstDebugInformation）。
+- **核心风险（必须在约人前决定）**：当前建连是 KCP 直连 IP，**Steam 大厅不承载游戏流量**。远程约人必须先用虚拟局域网（ZeroTier/Radmin）把 IP 打通；Steam P2P 传输层仍未接入（且现有工程用 Facepunch.Steamworks，与多数依赖 Steamworks.NET 的 Mirror transport 存在绑定冲突，不是换个包就能好）。

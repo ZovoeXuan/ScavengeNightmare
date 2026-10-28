@@ -41,6 +41,12 @@ namespace ScavengeNightmare.Gameplay
 
         public static IReadOnlyList<string> Recent => recent;
 
+        /// <summary>
+        /// 事件钩子：D7 实测记录器据此把摩擦事件落进 CSV。
+        /// 参数为 (事件码, 文案)。只在调用 Report 的一侧触发，不跨端。
+        /// </summary>
+        public static event Action<string, string> Reported;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetOnLoad()
         {
@@ -59,6 +65,8 @@ namespace ScavengeNightmare.Gameplay
             {
                 recent.RemoveAt(0);
             }
+
+            Reported?.Invoke(code, message);
 
             if (toneFrequency > 0f && Tuning.enablePlaceholderAudio)
             {
