@@ -199,3 +199,30 @@
 - **回归**：D4 投掷 4.14、D6 五条、D8 八项、D9 七项全过；Supermarket 的 D12 进图冒烟全过。
 - **踩坑**：① 既有 6 件的 `value` 原本是 0，而我为保护物理基线把整个数值写入都跳过了，导致结算输入全 0——value 不是物理参数，应照设。② 验收测试瞬移玩家到撤离区时没带走手持物件，服务端 `breakDistance` 立刻判脱手，结算永远 0——瞬移必须连货一起挪。
 - **遗留**：20 件只注册进 Supermarket（Main 是冻结基线）；易碎件碎后只是拿不到钱、没有扣分设计；抓握点没做双手握持；**没有结算 UI**（总额已 SyncVar 同步但玩家看不到）；价值数值未经真人校准。
+
+## Sprint 4A · Story 1 · 公秤提交 + 服务端公共账本 + GameRoot 跨场景存活（2026-10-29）
+
+- **做了什么**：新增 `Economy/TeamAccount`、`Economy/QuotaTerminal`、`Economy/S4ABootstrap`、`Economy/S4AInput`、`UI/WalletHUD`、`Networking/S4ADepositTest`、`Editor/S4ASceneSetup`；`BuildWindows` 支持 `-map=sprint4a` 打 `Night1` 到 `Builds/Sprint4A`。
+- **场景策略**：新建 `Night1.unity`（从 Supermarket 复制），删掉 `EvacZone`/`EvacSettlement`/`TraitBootstrap`，重配 16 个 4A 临时锚点；`Main` 与 `Supermarket` 一行未动，作为 D3–D13 回归基线。
+- **验收**：`S4A_VALIDATE_OK night1=1 quotaTerminal=1 anchors=16 evacRemoved=1 traits=none gameroot=1`；`-s4adeposit` 通过——`S4A_DEPOSIT_TALLY accepted=4 uniqueCargo=4 expectedSum=2650 actualSum=2650 dupBlocked=1 ok=True`，`GATE_WALLET delta=0`；`S4A_RELOAD_CHECK before=2650 after=2650 instanceAlive=True`：重载场景后账本与余额存活。
+- **回归**：D4 投掷 4.14、D6 五条、D8 八项、D9 七项全过（重建 Main 后）。
+- **踩坑（都很隐蔽，记下来防复发）**：
+  1. **不能读 `UnityEngine.Input`**：工程已切 Input System，`Input.GetKey` 每帧抛 `InvalidOperationException`，属于“报错但看起来还在跑”的假运行状态。交互抽象改走 `Keyboard.current`，自动化用 `S4AInput.AutoInteract`。
+  2. **`NetworkTransformReliable` 会把手动瞬移拉回去**：`motor.transform.position = x` 实测不生效（距离仍是原锚点距离）。必须先 `enabled=false` 再改坐标后恢复。
+  3. **抓取后下一帧被自动松手**：`GrabController.Update` 在“左键未按下”时调用 `RequestRelease(true)`，自动化没有鼠标输入 → 现象是 `immediate=True / afterFrame=False`。必须先 `grab.SetInputEnabled(false)`。
+  4. **持物点必须按质心对齐**：判定用的是 `body.worldCenterOfMass`，不是 transform；大件轴心偏移会让首帧脱手。
+  5. **CharacterController 触发器不稳定**：玩家没有 Rigidbody，`OnTriggerEnter` 实测不进（inside 恒为空）。公秤改用 `Collider.bounds.Contains(playerPos)` 判定，结果可断言。
+  6. **删 `TraitBootstrap` 还不够**：`PlayerTraits` 自带 database 会继续抽身份（`D8_ASSIGN identity=brute card=sniffer`）。必须在自动化/启动入口显式 `TraitSettings.ForceNoTraits = true`，否则负重与交互距离被污染且断言仍“自洽通过”。
+- **遗留 / 下一 Story**：仍是**内存态**，没有落盘（Story 2 做 `P0SaveService` 原子写与强杀恢复）；`-s4adeposit` 目前只有内存余额校验，`path=(memory)`；没有安全屋与商店（Story 4）；没有推车（Story 3）。
+
+### Story 1 复审（同日，四处重点复查后修复）
+
+- **修掉一个隐藏的假联机（最严重）**：`QuotaTerminal.Update` 在服务端直接读 `S4AInput.InteractHeld`——服务器读的是**自己那台机器**的键盘。主机模式下房主按 E 能提交、一切正常，但远端客户端永远按不动，属于典型的「主机单机跑通 = 联机也跑通」。新增 `Networking/PlayerInteract`：`isLocalPlayer` 读本地按键 → `[Command]` 上报 → 服务端 `[SyncVar]`，公秤只读 `InteractHeldServer`。**惰性**：场景里没有 `QuotaTerminal` 时完全不发消息，Main / Supermarket 零网络增量；`Player.prefab` 由 `S4ASceneSetup` 幂等挂载并纳入 `S4A_VALIDATE_OK` 校验项。
+- **测试不再会假通过**：原 `WaitFor` 超时只打一行 `LogError` 就继续跑，最后照样输出 `ok=True`。改为硬失败计数 `failures`，所有超时、抓取失败、重放被接受、重载后余额变动都计入；最终必出 `S4A_STORY1_OK` 或 `S4A_STORY1_FAIL`，退出码也跟着变（`Application.Quit(0/1)`）。另新增反向断言：重放同一 `cargoId` 后余额必须**一动不动**，不能只看「返回 false」。
+- **补上 QA 列为最高优先级的 `GATE_QUOTA_GATE`**：每次入账打 `leg=/progress=/quota=/carry_over=/portal=(locked|unlocked)`。它同时证明**超额不截断**——实测第 2 件就把 1800 撞穿，`carry_over=300→700→850` 全部照常入账，避免「交超了反而亏」这类陷阱选项。`NextLeg` 会重置 `quotaReached`。
+- **账本单例加了重复守卫**：跨场景常驻的唯一风险是同进程出现第二份账本，旧实例被顶掉时余额静默归零，而所有断言读新实例会**自洽通过**。现在打 `S4A_ACCOUNT_DUPLICATE` 并拒绝覆盖。`S4ABootstrap` 同时对纯客户端进程立即返回（原逻辑会干等 20 秒）。
+- **公秤不再每帧 `FindObjectsByType`**：改为 0.5s 缓存并顺带清理已销毁玩家的 `hold` 字典（A12 性能是阻断项，不能留每帧全表分配）。
+- **内存态被显式化**：`TeamAccount.Persisted => false`，`GATE_WALLET` 增加 `persisted=False` 字段，防止把这轮结果误读成「钱已经不会丢」。
+- **复审后验收**：`S4A_DEPOSIT_TALLY accepted=4 uniqueCargo=4 expectedSum=2650 actualSum=2650 dupBlocked=1 failures=0 ok=True`、`S4A_STORY1_OK balance=2650 reloadSurvived=True`。
+- **复审后回归**：D4 投掷 4.14、D6 五条、D8 八项、D9 七项全过——证明给 `Player.prefab` 加组件对基线完全惰性。
+- **本轮新增踩坑**：**服务器不能读本地输入**。凡是「长按/按键」类交互，必须是客户端 `[Command]` 上报，否则主机模式自测永远通过、一上双人就废。

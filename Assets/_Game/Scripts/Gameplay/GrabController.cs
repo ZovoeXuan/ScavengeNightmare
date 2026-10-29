@@ -320,6 +320,7 @@ namespace ScavengeNightmare.Gameplay
             if (delta.magnitude > profile.breakDistance)
             {
                 // 被门框 / 墙卡住：直接脱手，而不是硬拽穿模
+                Debug.Log($"[S4A] S4A_HOLD_RELEASE id={profile.id} delta={delta.magnitude:F2} break={profile.breakDistance} com={body.worldCenterOfMass} target={target}");
                 ServerRelease(false);
                 return;
             }

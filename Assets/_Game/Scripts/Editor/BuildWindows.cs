@@ -16,17 +16,30 @@ public static class BuildWindows
 {
     private const string MainScene = "Assets/_Game/Scenes/Main.unity";
     private const string MarketScene = "Assets/_Game/Scenes/Supermarket.unity";
+    private const string NightScene = "Assets/_Game/Scenes/Night1.unity";
 
     [MenuItem("Build/Windows x64")]
     public static void Build()
     {
         string map = ReadArg("-map=");
         bool market = string.Equals(map, "supermarket", StringComparison.OrdinalIgnoreCase);
+        bool sprint4a = string.Equals(map, "sprint4a", StringComparison.OrdinalIgnoreCase);
 
-        string scene = market ? MarketScene : MainScene;
+        string scene = market ? MarketScene : (sprint4a ? NightScene : MainScene);
         string output = market
             ? "Builds/Supermarket/ScavengeNightmare.exe"
-            : "Builds/Windows/ScavengeNightmare.exe";
+            : (sprint4a ? "Builds/Sprint4A/ScavengeNightmare.exe" : "Builds/Windows/ScavengeNightmare.exe");
+
+        if (sprint4a && AssetDatabase.LoadAssetAtPath<SceneAsset>(NightScene) == null)
+        {
+            Debug.LogError($"BUILD_FAILED reason=scene_missing path={NightScene}（先跑 S4ASceneSetup.Setup）");
+            if (Application.isBatchMode)
+            {
+                EditorApplication.Exit(1);
+            }
+
+            return;
+        }
 
         if (market && AssetDatabase.LoadAssetAtPath<SceneAsset>(MarketScene) == null)
         {
@@ -72,7 +85,7 @@ public static class BuildWindows
             Debug.LogWarning("steam_appid.txt not found at project root; build will fail to init Steam.");
         }
 
-        Debug.Log($"BUILD_OK {output} scene={(market ? "Supermarket" : "Main")} appIdFile={targetAppId}");
+        Debug.Log($"BUILD_OK {output} scene={(market ? "Supermarket" : (sprint4a ? "Night1" : "Main"))} appIdFile={targetAppId}");
     }
 
     private static string ReadArg(string prefix)
