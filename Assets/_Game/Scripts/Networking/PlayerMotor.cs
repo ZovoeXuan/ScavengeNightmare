@@ -45,6 +45,11 @@ namespace ScavengeNightmare.Networking
         private Vector2 automationMove;
         private bool automationSprint;
         private float carrySpeedMultiplier = 1f;
+
+        /// <summary>
+        /// Story 3：外部速度硬上限，负数 = 不限制。默认 -1 才能保证对 D3–D13 完全惰性。
+        /// </summary>
+        private float externalSpeedCap = -1f;
         private float carryMassKg;
         private float stunUntil;
         private Traits.PlayerTraits traits;
@@ -366,6 +371,13 @@ namespace ScavengeNightmare.Networking
                 speed *= load.PanicSpeedScale;
             }
 
+            // Story 3：推车限速。用硬上限而不是乘系数——乘系数会和 D8 身份倍率互相叠，
+            // 变成「大力士推车比别人慢更多」这种既不可预期又难调的复合效果。
+            if (externalSpeedCap >= 0f && speed > externalSpeedCap)
+            {
+                speed = externalSpeedCap;
+            }
+
             planarVelocity = Vector3.MoveTowards(planarVelocity, desired * speed, acceleration * Time.deltaTime);
 
             if (controller.isGrounded)
@@ -421,6 +433,15 @@ namespace ScavengeNightmare.Networking
 
         /// <summary>硬直时间倍率（D8）：抗揍的角色被砸顿得更短。</summary>
         public float StunScale => Loadout.StunScale;
+
+        /// <summary>
+        /// Story 3：外部速度硬上限（推车推行限速）。传负数解除限制。
+        /// 默认值必须是 -1，否则会给 D3–D13 引入一个看不见的天花板。
+        /// </summary>
+        public void SetExternalSpeedCap(float capMetersPerSecond)
+        {
+            externalSpeedCap = capMetersPerSecond;
+        }
 
         /// <summary>D8 交互距离倍率：近视眼看得近。</summary>
         public float InteractRangeScale => Loadout.InteractRangeScale;

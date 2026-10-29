@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Mirror;
+using ScavengeNightmare.Cart;
 using ScavengeNightmare.Gameplay;
 using ScavengeNightmare.Networking;
 using UnityEngine;
@@ -62,7 +63,14 @@ namespace ScavengeNightmare.Economy
                 }
 
                 GrabController grab = motor.GetComponent<GrabController>();
-                if (grab == null || !grab.IsHolding)
+                bool holding = grab != null && grab.IsHolding;
+
+                // 整车提交（P0 无挑件）：手里空着、车停在停车位且有货，长按同一个 1.2s 即可提交。
+                // 判据放在服务端，且必须同时满足「车在停车位」，避免玩家站在公秤上随便把远处的车交了。
+                CartController cart = CartController.Instance;
+                bool cartReady = !holding && cart != null && cart.HasCargo && cart.IsParked;
+
+                if (!holding && !cartReady)
                 {
                     hold[motor] = 0f;
                     continue;
@@ -94,9 +102,24 @@ namespace ScavengeNightmare.Economy
                 if (t >= HoldSeconds)
                 {
                     hold[motor] = 0f;
-                    account.Deposit(grab.HeldProp);
+
+                    if (holding)
+                    {
+                        account.Deposit(grab.HeldProp);
+                    }
+                    else if (cart != null)
+                    {
+                        SubmitCart(cart, account);
+                    }
                 }
             }
+        }
+
+        private static void SubmitCart(CartController cart, TeamAccount account)
+        {
+            List<GrabbableProp> items = cart.UnloadAll();
+            int sum = account.DepositAll(items);
+            Debug.Log($"[S4A] S4A_CART_SUBMIT_DONE requested={items.Count} accepted_sum={sum} balance={account.Balance}");
         }
 
         /// <summary>

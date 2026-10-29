@@ -39,6 +39,9 @@ namespace ScavengeNightmare.Gameplay
         private Traits.PlayerTraits traits;
         private float shakePhase;
 
+        /// <summary>Story 3：双手被占用（折叠抱车中）。默认 false。</summary>
+        private bool handsBusy;
+
         /// <summary>D8：角色身份 × 缺点牌。未配置时为中性值，行为与 D7 一致。</summary>
         private Traits.PlayerLoadout Loadout => traits != null ? traits.Loadout : Traits.PlayerLoadout.Neutral;
 
@@ -46,6 +49,9 @@ namespace ScavengeNightmare.Gameplay
         private float EffectiveRange => grabRange * Loadout.InteractRangeScale;
 
         public bool IsHolding => isHolding;
+
+        /// <summary>Story 3：双手被占用（折叠抱车中）。默认 false，对 D3–D13 完全惰性。</summary>
+        public bool HandsBusy => handsBusy;
 
         /// <summary>UI 用：只有本地玩家才画准星与提示。</summary>
         public bool IsLocalControl => isLocalPlayer;
@@ -164,6 +170,14 @@ namespace ScavengeNightmare.Gameplay
         {
             if (target == null || isHolding)
             {
+                return;
+            }
+
+            // Story 3：抱车时双手被占，抓货必须被拒（A5 要求折叠抱车期间不能同时抓货）。
+            // 默认 false，Main / Supermarket 的 D3–D13 行为一行不变。
+            if (handsBusy)
+            {
+                Debug.Log("[S4A] S4A_GRAB_REJECT reason=hands_busy");
                 return;
             }
 
@@ -363,6 +377,26 @@ namespace ScavengeNightmare.Gameplay
         public void SetInputEnabled(bool value)
         {
             inputEnabled = value;
+        }
+
+        /// <summary>
+        /// Story 3：折叠抱车时双手被占。置 true 会立刻放下手持物——
+        /// 不允许出现「一手抱车、一手抱货」这种物理上不成立的状态。
+        /// </summary>
+        public void SetHandsBusy(bool busy)
+        {
+            if (handsBusy == busy)
+            {
+                return;
+            }
+
+            handsBusy = busy;
+            Debug.Log($"[S4A] S4A_HANDS_BUSY value={busy}");
+
+            if (busy && isHolding)
+            {
+                RequestRelease(false);
+            }
         }
     }
 }

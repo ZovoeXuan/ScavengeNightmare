@@ -274,6 +274,39 @@ namespace ScavengeNightmare.Economy
         }
 
         /// <summary>
+        /// 整车提交（P0 无挑件）：一件一件入账，任何一件被拒都不影响其他件，
+        /// 但返回值只统计真正入账的金额，避免「车上有 3 件、账上只到了 2 件的钱」被当成成功。
+        /// </summary>
+        [Server]
+        public int DepositAll(IReadOnlyList<GrabbableProp> props)
+        {
+            if (props == null)
+            {
+                return 0;
+            }
+
+            int accepted = 0;
+            int sum = 0;
+
+            foreach (GrabbableProp prop in props)
+            {
+                if (prop == null)
+                {
+                    continue;
+                }
+
+                if (Deposit(prop))
+                {
+                    accepted++;
+                    sum += prop.CurrentValue;
+                }
+            }
+
+            Debug.Log($"[S4A] S4A_DEPOSIT_CART requested={props.Count} accepted={accepted} sum={sum} balance={balance}");
+            return sum;
+        }
+
+        /// <summary>
         /// 没有存档服务时（Main / Supermarket 等 D3–D13 基线场景）退回 Story 1 的纯内存行为。
         /// 这条降级路径必须存在，否则 4A 的改动会把回归基线一起改掉；但也必须喊一声，
         /// 不能让人误以为钱已经落盘。

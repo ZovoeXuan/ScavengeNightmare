@@ -15,6 +15,7 @@ namespace ScavengeNightmare.Economy
     public sealed class S4ABootstrap : MonoBehaviour
     {
         [SerializeField] private GameObject gameRootPrefab;
+        [SerializeField] private GameObject cartPrefab;
 
         private void Start()
         {
@@ -88,6 +89,42 @@ namespace ScavengeNightmare.Economy
             NetworkServer.Spawn(go);
 
             Debug.Log($"[S4A] S4A_BOOT_OK spawned=1 save_state={save.State} dir={save.SaveDir}");
+
+            yield return new WaitForSeconds(0.2f);
+            SpawnCart();
+        }
+
+        /// <summary>
+        /// 推车必须由服务端运行时 Spawn：场景里摆的 prefab 实例拿不到 sceneId（D6.5 已确立）。
+        /// 场景里只摆 CartSpawnAnchor，位置与朝向从锚点读。
+        /// </summary>
+        private void SpawnCart()
+        {
+            if (cartPrefab == null)
+            {
+                Debug.LogWarning("[S4A] S4A_CART_SPAWN_SKIP reason=no_cart_prefab");
+                return;
+            }
+
+            if (ScavengeNightmare.Cart.CartController.Instance != null)
+            {
+                Debug.Log("[S4A] S4A_CART_SPAWN_SKIP reason=already_exists");
+                return;
+            }
+
+            ScavengeNightmare.Cart.CartSpawnAnchor anchor =
+                UnityEngine.Object.FindObjectsByType<ScavengeNightmare.Cart.CartSpawnAnchor>(FindObjectsSortMode.None).Length > 0
+                    ? UnityEngine.Object.FindObjectsByType<ScavengeNightmare.Cart.CartSpawnAnchor>(FindObjectsSortMode.None)[0]
+                    : null;
+
+            Vector3 pos = anchor != null ? anchor.transform.position : new Vector3(0f, 0.3f, 17f);
+            float yaw = anchor != null ? anchor.yawDegrees : 0f;
+
+            GameObject cart = Instantiate(cartPrefab, pos, Quaternion.Euler(0f, yaw, 0f));
+            cart.name = "Cart";
+            NetworkServer.Spawn(cart);
+
+            Debug.Log($"[S4A] S4A_CART_SPAWN at=({pos.x:F1},{pos.z:F1}) yaw={yaw}");
         }
     }
 }

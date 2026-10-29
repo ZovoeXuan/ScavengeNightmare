@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Mirror;
+using ScavengeNightmare.Cart;
 using ScavengeNightmare.Economy;
 using ScavengeNightmare.Gameplay;
 using ScavengeNightmare.Networking;
@@ -21,6 +22,8 @@ namespace ScavengeNightmare.EditorTools
         private const string NightScene = "Assets/_Game/Scenes/Night1.unity";
         private const string GameRootPrefab = "Assets/_Game/Prefabs/S4AGameRoot.prefab";
         private const string PlayerPrefab = "Assets/_Game/Prefabs/Player.prefab";
+        private const string CartPrefabPath = "Assets/_Game/Prefabs/Cart.prefab";
+        private const string CartProfilePath = "Assets/_Game/Data/Cart_Default.asset";
 
         private static readonly string[] AnchorProfiles =
         {
@@ -33,8 +36,9 @@ namespace ScavengeNightmare.EditorTools
         [MenuItem("拾荒惊魂/S4A · 生成 Night1 夜路场景")]
         public static void Setup()
         {
-            GameObject prefab = EnsureGameRootPrefab();
+            GameObject prefab =             EnsureGameRootPrefab();
             EnsurePlayerInteract();
+            GameObject cartPrefab = EnsureCartPrefab();
 
             if (AssetDatabase.LoadAssetAtPath<SceneAsset>(NightScene) == null)
             {
@@ -52,8 +56,10 @@ namespace ScavengeNightmare.EditorTools
             RemoveRoots(scene, "EvacZone", "EvacSettlement", "TraitBootstrap");
             RebuildAnchors(scene);
             EnsureQuotaTerminal(scene);
-            EnsureBootstrap(scene, prefab);
+            EnsureCartInScene(scene);
+            EnsureBootstrap(scene, prefab, cartPrefab);
             RegisterPrefab(scene, prefab);
+            RegisterPrefab(scene, cartPrefab);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -127,6 +133,26 @@ namespace ScavengeNightmare.EditorTools
 
             Check(saveService, "gameroot_save_service");
             Check(nm != null && nm.GetComponent<S4ASaveTest>() != null, "save_test_attached");
+
+            GameObject cart = AssetDatabase.LoadAssetAtPath<GameObject>(CartPrefabPath);
+            Check(cart != null, "cart_prefab_exists");
+            Check(cart != null && cart.GetComponent<CartController>() != null, "cart_controller");
+            Check(cart != null && cart.GetComponent<CartCargo>() != null, "cart_cargo");
+            Check(AssetDatabase.LoadAssetAtPath<CartProfile>(CartProfilePath) != null, "cart_profile_asset");
+
+            int cartAnchors = UnityEngine.Object.FindObjectsByType<CartSpawnAnchor>(FindObjectsSortMode.None).Length;
+            Check(cartAnchors == 1, $"cart_anchor_{cartAnchors}");
+
+            int parking = UnityEngine.Object.FindObjectsByType<CartParkingZone>(FindObjectsSortMode.None).Length;
+            Check(parking == 1, $"cart_parking_{parking}");
+
+            bool cartRegistered = false;
+            if (nm != null && cart != null && nm.spawnPrefabs != null)
+            {
+                cartRegistered = nm.spawnPrefabs.Contains(cart);
+            }
+
+            Check(cartRegistered, "cart_registered");
 
             GameObject player = AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefab);
             Check(player != null, "player_prefab_exists");
@@ -269,7 +295,127 @@ namespace ScavengeNightmare.EditorTools
             EditorUtility.SetDirty(go);
         }
 
-        private static void EnsureBootstrap(Scene scene, GameObject prefab)
+        /// <summary>
+        /// 推车 prefab + 配置资源。数值全部落在 CartProfile 资源里，prefab 只负责结构（D13 原则：改表不改代码）。
+        /// </summary>
+        private static GameObject EnsureCartPrefab()
+        {
+            CartProfile profile = AssetDatabase.LoadAssetAtPath<CartProfile>(CartProfilePath);
+            if (profile == null)
+            {
+                profile = ScriptableObject.CreateInstance<CartProfile>();
+                AssetDatabase.CreateAsset(profile, CartProfilePath);
+                AssetDatabase.SaveAssets();
+                Debug.Log("[S4A] S4A_CART_PROFILE_CREATED path=" + CartProfilePath);
+            }
+
+            GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(CartPrefabPath);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            GameObject root = new("Cart");
+
+            Rigidbody rb = root.AddComponent<Rigidbody>();
+            rb.mass = profile.cartMassKg;
+            rb.linearDamping = 0.2f;
+            // 角阻尼给大一点：P0 不做轮胎物理，车靠速度驱动，自旋只会让推行手感发飘
+            rb.angularDamping = 4f;
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
+
+            BoxCollider hull = root.AddComponent<BoxCollider>();
+            hull.size = new Vector3(profile.deckLength, 0.5f, profile.deckWidth);
+            hull.center = new Vector3(0f, 0.3f, 0f);
+
+            // 板面摩擦：货物能不能待在板上全靠它（配合 CartCargo 的平台带动）
+            PhysicsMaterial mat = new("CartDeck")
+            {
+                dynamicFriction = profile.cargoFriction,
+                staticFriction = profile.cargoFriction,
+                bounciness = 0f,
+                frictionCombine = PhysicsMaterialCombine.Maximum,
+                bounceCombine = PhysicsMaterialCombine.Minimum
+            };
+
+            const string matPath = "Assets/_Game/Data/CartDeck.physicMaterial";
+            if (AssetDatabase.LoadAssetAtPath<PhysicsMaterial>(matPath) == null)
+            {
+                AssetDatabase.CreateAsset(mat, matPath);
+            }
+
+            hull.material = mat;
+
+            GameObject deck = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            deck.name = "Deck";
+            deck.transform.SetParent(root.transform, false);
+            deck.transform.localScale = new Vector3(profile.deckLength, profile.deckHeight, profile.deckWidth);
+            deck.transform.localPosition = new Vector3(0f, 0.25f, 0f);
+            UnityEngine.Object.DestroyImmediate(deck.GetComponent<Collider>());
+
+            GameObject handle = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            handle.name = "Handle";
+            handle.transform.SetParent(root.transform, false);
+            handle.transform.localScale = new Vector3(profile.deckWidth, 0.08f, 0.08f);
+            handle.transform.localPosition = new Vector3(0f, profile.handleHeight, profile.deckLength * 0.5f - 0.1f);
+            UnityEngine.Object.DestroyImmediate(handle.GetComponent<Collider>());
+
+            root.AddComponent<NetworkIdentity>();
+            // 不设 syncDirection：Mirror 默认就是 ServerToClient，而且该字段不允许运行时翻转
+            root.AddComponent<NetworkTransformReliable>();
+
+            CartController controller = root.AddComponent<CartController>();
+            root.AddComponent<CartCargo>();
+
+            SerializedObject so = new(controller);
+            SerializedProperty prop = so.FindProperty("profile");
+            if (prop != null)
+            {
+                prop.objectReferenceValue = profile;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            GameObject saved = PrefabUtility.SaveAsPrefabAsset(root, CartPrefabPath);
+            UnityEngine.Object.DestroyImmediate(root);
+            AssetDatabase.SaveAssets();
+            Debug.Log("[S4A] S4A_CART_PREFAB_CREATED path=" + CartPrefabPath);
+            return saved;
+        }
+
+        /// <summary>场景里只摆锚点与停车位，推车本体由服务端运行时 Spawn（D6.5：场景实例拿不到 sceneId）。</summary>
+        private static void EnsureCartInScene(Scene scene)
+        {
+            if (UnityEngine.Object.FindObjectsByType<CartSpawnAnchor>(FindObjectsSortMode.None).Length == 0)
+            {
+                GameObject anchor = new("CartSpawnAnchor_Entry");
+                anchor.transform.position = new Vector3(0f, 0.05f, 17f);
+                anchor.AddComponent<CartSpawnAnchor>();
+                EditorUtility.SetDirty(anchor);
+            }
+
+            CartParkingZone[] zones = UnityEngine.Object.FindObjectsByType<CartParkingZone>(FindObjectsSortMode.None);
+            Vector3 parkingPos = new(0f, 1f, -16.5f);
+
+            if (zones.Length == 0)
+            {
+                GameObject zone = new("CartParkingZone");
+                zone.transform.position = parkingPos;
+                BoxCollider box = zone.AddComponent<BoxCollider>();
+                box.size = new Vector3(1.8f, 2f, 2.6f);
+                box.isTrigger = true;
+                zone.AddComponent<CartParkingZone>();
+                EditorUtility.SetDirty(zone);
+            }
+            else
+            {
+                // 位置错了要就地纠正，不能只在「不存在时创建」——
+                // 已经存在的旧停车位会一直停在公秤外，整车提交永远按不下去。
+                zones[0].transform.position = parkingPos;
+                EditorUtility.SetDirty(zones[0]);
+            }
+        }
+
+        private static void EnsureBootstrap(Scene scene, GameObject prefab, GameObject cartPrefab)
         {
             NetworkManager[] managers = UnityEngine.Object.FindObjectsByType<NetworkManager>(FindObjectsSortMode.None);
             if (managers.Length == 0)
@@ -290,6 +436,13 @@ namespace ScavengeNightmare.EditorTools
             if (prop != null)
             {
                 prop.objectReferenceValue = prefab;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            SerializedProperty cartProp = so.FindProperty("cartPrefab");
+            if (cartProp != null)
+            {
+                cartProp.objectReferenceValue = cartPrefab;
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
 

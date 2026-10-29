@@ -29,8 +29,8 @@ namespace ScavengeNightmare.Networking
                 return;
             }
 
-            // 没有公秤的场景（Main / Supermarket / 纯联机白盒）完全不发消息，保证基线零增量。
-            if (QuotaTerminal.Instance == null)
+            // 惰性：场景里既没有公秤也没有推车时完全不发消息，Main / Supermarket 零网络增量。
+            if (QuotaTerminal.Instance == null && ScavengeNightmare.Cart.CartController.Instance == null)
             {
                 return;
             }
