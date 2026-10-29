@@ -16,11 +16,16 @@ namespace ScavengeNightmare.Networking
     public sealed class PlayerInteract : NetworkBehaviour
     {
         [SyncVar] private bool interactHeld;
+        [SyncVar] private bool grabHeld;
 
-        /// <summary>服务端可读的交互状态。客户端本地读这个值没有意义，必须是服务端视角。</summary>
+        /// <summary>服务端可读的交互状态（E 键）。客户端本地读这个值没有意义，必须是服务端视角。</summary>
         public bool InteractHeldServer => interactHeld;
 
+        /// <summary>服务端可读的抓握/推车状态（鼠标左键）。</summary>
+        public bool GrabHeldServer => grabHeld;
+
         private bool lastSent;
+        private bool lastGrabSent;
 
         private void Update()
         {
@@ -36,19 +41,32 @@ namespace ScavengeNightmare.Networking
             }
 
             bool held = S4AInput.InteractHeld;
-            if (held == lastSent)
+            if (held != lastSent)
             {
-                return;
+                lastSent = held;
+                CmdSetInteract(held);
             }
 
-            lastSent = held;
-            CmdSetInteract(held);
+            // 两条通道各自独立判断，不能用「E 键没变化就 return」提前退出——
+            // 那样左键这条永远上报不上去（推车会一直判定成没人推）。
+            bool grabbing = S4AInput.GrabHeld;
+            if (grabbing != lastGrabSent)
+            {
+                lastGrabSent = grabbing;
+                CmdSetGrab(grabbing);
+            }
         }
 
         [Command]
         private void CmdSetInteract(bool value)
         {
             interactHeld = value;
+        }
+
+        [Command]
+        private void CmdSetGrab(bool value)
+        {
+            grabHeld = value;
         }
     }
 }

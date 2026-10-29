@@ -14,6 +14,9 @@ namespace ScavengeNightmare.Economy
     {
         public static bool AutoInteract;
 
+        /// <summary>自动化用的「按住左键」。推车与抓货共用这一个键。</summary>
+        public static bool AutoGrab;
+
         public static bool ManualInteract
         {
             get
@@ -28,5 +31,25 @@ namespace ScavengeNightmare.Economy
         }
 
         public static bool InteractHeld => AutoInteract || ManualInteract;
+
+        /// <summary>
+        /// 鼠标左键：抓货与推车共用的「用手」键。
+        /// 推车之前是「靠近就自动推」，玩家没有参与感，也不符合抓握的肌肉记忆——
+        /// 现在统一为：靠近是前提，按住左键才真的推。
+        /// </summary>
+        public static bool ManualGrab
+        {
+            get
+            {
+#if ENABLE_INPUT_SYSTEM
+                UnityEngine.InputSystem.Mouse mouse = UnityEngine.InputSystem.Mouse.current;
+                return mouse != null && mouse.leftButton.isPressed;
+#else
+                return Input.GetMouseButton(0);
+#endif
+            }
+        }
+
+        public static bool GrabHeld => AutoGrab || ManualGrab;
     }
 }

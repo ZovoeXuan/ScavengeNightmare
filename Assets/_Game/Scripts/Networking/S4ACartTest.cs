@@ -492,6 +492,7 @@ namespace ScavengeNightmare.Networking
             Vector3 last = fCart.transform.position;
             float startedAt = Time.unscaledTime;
 
+            S4AInput.AutoGrab = true;
             fMotor.ApplyAutomationMove(new Vector2(0f, 1f), false);
 
             while (pushed < 30f && Time.unscaledTime - startedAt < 200f)
@@ -528,6 +529,7 @@ namespace ScavengeNightmare.Networking
             }
 
             fMotor.ClearAutomationMove();
+            S4AInput.AutoGrab = false;
             S4AInput.AutoInteract = false;
 
             bool keptAll = fCart.ItemCount == targets.Count;
@@ -849,7 +851,14 @@ namespace ScavengeNightmare.Networking
             yield return new WaitForSeconds(0.4f);
 
             Vector3 start = rb.position;
+            // 推车现在要求按住鼠标左键（与抓货同一键位），自动化用 AutoGrab 模拟
+            S4AInput.AutoGrab = true;
             motor.ApplyAutomationMove(new Vector2(0f, 1f), false);
+
+            yield return new WaitForSeconds(0.5f);
+
+            PlayerInteract pi = motor.GetComponent<PlayerInteract>();
+            Debug.Log($"[S4A] S4A_CART_PUSH_DEBUG autoGrab={S4AInput.AutoGrab} grabHeldServer={(pi != null ? pi.GrabHeldServer : false)} interactComponent={(pi != null)} dist={Vector3.Distance(motor.transform.position, rb.position):F2}");
 
             float t = 0f;
             while (t < 20f)
@@ -865,6 +874,7 @@ namespace ScavengeNightmare.Networking
             }
 
             motor.ClearAutomationMove();
+            S4AInput.AutoGrab = false;
             yield return new WaitForSeconds(0.3f);
 
             report(Vector3.Distance(new Vector3(start.x, 0f, start.z), new Vector3(rb.position.x, 0f, rb.position.z)));

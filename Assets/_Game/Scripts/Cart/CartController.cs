@@ -159,7 +159,7 @@ namespace ScavengeNightmare.Cart
 
         private void UpdatePushing(float dt)
         {
-            PlayerMotor found = FindNearestPlayer(handleReach);
+            PlayerMotor found = FindPusher(handleReach);
 
             if (found != null)
             {
@@ -167,6 +167,11 @@ namespace ScavengeNightmare.Cart
                 {
                     ReleasePusher();
                     pusher = found;
+
+                    // 推车占住双手：要么抓货、要么推车，不能一边抱着货一边推车。
+                    GrabController grab = found.GetComponent<GrabController>();
+                    grab?.SetHandsBusy(true);
+
                     Debug.Log($"[S4A] S4A_CART_PUSHER netId={found.netId}");
                 }
 
@@ -327,7 +332,9 @@ namespace ScavengeNightmare.Cart
         }
 
         /// <summary>
-        /// 2.8m 内有玩家、且该玩家确实在按方向键 —— 视为「在推」。
+        /// 2.8m 内有玩家、该玩家按着左键、且确实在按方向键 —— 视为「在推」。
+        /// 左键这一条不能省：推行现在要求按住左键，没按左键的人只是在车旁边站着，
+        /// 那种情况下车不动是正确行为，不该算卡死。
         /// 用输入意图而不是位移：顶着墙时位移为零，但那是在用力推。
         /// </summary>
         private bool PushingCandidate()
@@ -335,6 +342,12 @@ namespace ScavengeNightmare.Cart
             foreach (PlayerMotor motor in Players())
             {
                 if (motor == null || !motor.HasMoveInput)
+                {
+                    continue;
+                }
+
+                PlayerInteract interact = motor.GetComponent<PlayerInteract>();
+                if (interact == null || !interact.GrabHeldServer)
                 {
                     continue;
                 }
@@ -404,11 +417,13 @@ namespace ScavengeNightmare.Cart
                 GrabController grab = motor.GetComponent<GrabController>();
                 bool holding = grab != null && grab.IsHolding;
 
+                bool grabHeld = interact != null && interact.GrabHeldServer;
+
                 interactDebugTimer += Time.unscaledDeltaTime;
-                if (interactDebugTimer >= 0.5f)
+                if (interactDebugTimer >= 0.4f)
                 {
                     interactDebugTimer = 0f;
-                    Debug.Log($"[S4A] S4A_CART_INTERACT_DEBUG held={held} pressed={pressed} inReach={inReach} dist={dist:F2} holding={holding} state={State} count={cargo.Count}");
+                    Debug.Log($"[S4A] S4A_CART_INTERACT_DEBUG held={held} grab={grabHeld} pressed={pressed} inReach={inReach} dist={dist:F2} holding={holding} state={State} count={cargo.Count}");
                 }
 
                 if (holding)
@@ -584,11 +599,19 @@ namespace ScavengeNightmare.Cart
                 motor.SetExternalSpeedCap(-1f);
             }
 
+            GrabController grab = pusher.GetComponent<GrabController>();
+            grab?.SetHandsBusy(false);
+
             pusher = null;
             pushSpeedCap = -1f;
         }
 
-        private PlayerMotor FindNearestPlayer(float reach)
+        /// <summary>
+        /// 找正在推车的玩家：**靠近 + 按住左键**两条同时满足才算。
+        /// 只按靠近就推会让玩家没有参与感，也不符合抓握的肌肉记忆；
+        /// 而只按左键不看距离又会出现隔空推车。
+        /// </summary>
+        private PlayerMotor FindPusher(float reach)
         {
             PlayerMotor best = null;
             float bestDistance = reach;
@@ -596,6 +619,12 @@ namespace ScavengeNightmare.Cart
             foreach (PlayerMotor motor in Players())
             {
                 if (motor == null)
+                {
+                    continue;
+                }
+
+                PlayerInteract interact = motor.GetComponent<PlayerInteract>();
+                if (interact == null || !interact.GrabHeldServer)
                 {
                     continue;
                 }
