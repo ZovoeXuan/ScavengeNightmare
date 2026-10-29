@@ -43,6 +43,7 @@ namespace ScavengeNightmare.Cart
         [SyncVar] private bool parked;
 
         private Rigidbody body;
+        private BoxCollider hullCollider;
         private BoxCollider deckCollider;
         private CartCargo cargo;
 
@@ -80,6 +81,7 @@ namespace ScavengeNightmare.Cart
         {
             Instance = this;
             body = GetComponent<Rigidbody>();
+            hullCollider = GetComponent<BoxCollider>();
             deckCollider = GetComponentInChildren<BoxCollider>();
             cargo = GetComponent<CartCargo>();
         }
@@ -202,17 +204,31 @@ namespace ScavengeNightmare.Cart
             toTarget.y = 0f;
 
             float dist = toTarget.magnitude;
-            if (dist > 0.04f)
+
+            // 用「玩家速度」驱动，不用「距离差」驱动。
+            // 距离差驱动在死区（0.04m）附近会反复启停：追上就停、停下又被拉开，
+            // 实测 200 秒只前进 20 米（平均 0.1 m/s），而限速本来是 2.05 m/s。
+            Vector3 playerVelocity = player.CurrentVelocity;
+            Vector3 planarPlayer = new Vector3(playerVelocity.x, 0f, playerVelocity.z);
+            float playerSpeed = planarPlayer.magnitude;
+
+            Vector3 desired;
+            if (playerSpeed > 0.05f)
             {
-                // 除以 dt 是为了不过冲：直接给满速会在接近目标点时来回抖
-                float speed = Mathf.Min(cap, dist / Mathf.Max(dt, 0.0001f));
-                Vector3 planar = toTarget.normalized * speed;
-                body.velocity = new Vector3(planar.x, body.velocity.y, planar.z);
+                desired = planarPlayer / playerSpeed * Mathf.Min(playerSpeed, cap);
             }
             else
             {
-                body.velocity = new Vector3(0f, body.velocity.y, 0f);
+                desired = Vector3.zero;
             }
+
+            // 位置修正：落后越多追得越快（最多 +1 m/s），保证贴住而不是掉队
+            if (dist > 0.02f)
+            {
+                desired += toTarget / dist * Mathf.Clamp(dist * 3f, 0f, 1f);
+            }
+
+            body.velocity = new Vector3(desired.x, body.velocity.y, desired.z);
 
             Quaternion want = Quaternion.Euler(0f, player.transform.eulerAngles.y, 0f);
             body.MoveRotation(Quaternion.Slerp(body.rotation, want, Mathf.Clamp01(yawLerp * dt)));
@@ -229,6 +245,13 @@ namespace ScavengeNightmare.Cart
             if (!body.isKinematic)
             {
                 body.isKinematic = true;
+            }
+
+            // 抱着的车不能挡自己的路：车悬在玩家身前 0.7m，若碰撞体还开着，
+            // 它会先一步顶在台阶上，玩家被自己的车挡在楼梯口（实测 40 秒爬升 0 米）。
+            if (hullCollider != null && hullCollider.enabled)
+            {
+                hullCollider.enabled = false;
             }
 
             Vector3 target = carrier.transform.position
@@ -265,7 +288,9 @@ namespace ScavengeNightmare.Cart
         /// </summary>
         private void UpdateStall(float dt)
         {
-            bool pushing = pusher != null;
+            // 不能只看 pusher：车被墙挡住之后玩家继续往前走，两者距离拉开，
+            // pusher 会因为超出 handleReach 变成 null，卡死就永远检测不到（实测 150 秒不动）。
+            bool pushing = pusher != null || PushingCandidate();
             stallWindowTimer += dt;
 
             if (stallWindowTimer < profile.stallWindowSeconds)
@@ -299,6 +324,28 @@ namespace ScavengeNightmare.Cart
 
                 stallCount = 0;
             }
+        }
+
+        /// <summary>
+        /// 2.8m 内有玩家、且该玩家确实在按方向键 —— 视为「在推」。
+        /// 用输入意图而不是位移：顶着墙时位移为零，但那是在用力推。
+        /// </summary>
+        private bool PushingCandidate()
+        {
+            foreach (PlayerMotor motor in Players())
+            {
+                if (motor == null || !motor.HasMoveInput)
+                {
+                    continue;
+                }
+
+                if (Vector3.Distance(motor.transform.position, transform.position) <= 2.8f)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void ReportStallEnd(string rescued)
@@ -402,8 +449,8 @@ namespace ScavengeNightmare.Cart
             BoxCollider hull = GetComponent<BoxCollider>();
             float hullTop = hull != null ? hull.center.y + hull.size.y * 0.5f : profile.deckHeight;
 
-            // 按件数在板面上分散摆放：全部堆在中心会互相挤，60kg 的大件一落下
-            // 就把旁边的轻件顶出板外（实测三件全掉，DROP 的 z 都在 0.53 左右）。
+            // 3 列排布（已验证能让 -s4acart 的 3 件轻+重货稳定推行 8.6m）。
+            // 试过 2×2 网格，反而把轻件挤到板边（推行距离从 8.64m 掉到 2.07m），已回滚。
             int index = Mathf.Max(0, cargo.Count - 1);
             int col = index % 3;
             int row = index / 3;
@@ -411,6 +458,7 @@ namespace ScavengeNightmare.Cart
             float lz = (row == 0 ? -1f : 1f) * profile.deckWidth * 0.22f;
 
             Vector3 top = transform.TransformPoint(new Vector3(lx, hullTop + 0.18f, lz));
+            cargo.RegisterAnchor(prop, new Vector3(lx, hullTop + 0.18f, lz), 0f);
 
             if (prop.Body != null)
             {
@@ -469,6 +517,11 @@ namespace ScavengeNightmare.Cart
                 if (body != null)
                 {
                     body.isKinematic = false;
+                }
+
+                if (hullCollider != null)
+                {
+                    hullCollider.enabled = true;
                 }
 
                 stallAnchor = transform.position;

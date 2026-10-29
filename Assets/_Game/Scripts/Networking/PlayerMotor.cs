@@ -435,6 +435,12 @@ namespace ScavengeNightmare.Networking
         public float StunScale => Loadout.StunScale;
 
         /// <summary>
+        /// 是否有移动输入。卡死判定必须读「意图」而不是「位移」：
+        /// 玩家顶着墙时位移为零，但那是在用力推，不是站着发呆。
+        /// </summary>
+        public bool HasMoveInput => moveInput.sqrMagnitude > 0.01f;
+
+        /// <summary>
         /// Story 3：外部速度硬上限（推车推行限速）。传负数解除限制。
         /// 默认值必须是 -1，否则会给 D3–D13 引入一个看不见的天花板。
         /// </summary>

@@ -20,6 +20,7 @@ namespace ScavengeNightmare.Cart
     {
         private readonly List<GrabbableProp> items = new();
         private readonly Dictionary<GrabbableProp, Vector3> anchors = new();
+        private readonly Dictionary<GrabbableProp, float> settleUntil = new();
 
         private CartProfile profile;
         private Transform deckTransform;
@@ -38,6 +39,27 @@ namespace ScavengeNightmare.Cart
             {
                 lastDeckPosition = deckTransform.position;
             }
+        }
+
+        /// <summary>
+        /// 装车时登记理想位置，并给一个「落稳期」。
+        /// 锚点必须在这里定，不能在第一次 Tick 时采样当前值——货物落地前可能已被旁边的大件挤偏，
+        /// 拿被挤偏的位置当基准，就等于把「已经歪了」当成正常。
+        ///
+        /// 落稳期是为了解决「大件放上去会被旁边的大件顶飞」：
+        /// 60kg 保险箱 + 42kg 雕像 + 12kg 电视挤在 0.975㎡ 的板面上，
+        /// 后放的件会与先放的件发生穿透修正，小件被弹到板外（实测 tv 落到车前 2 米）。
+        /// 落稳期内货物锁在锚点上、不受物理影响，落稳后交还物理。
+        /// </summary>
+        public void RegisterAnchor(GrabbableProp prop, Vector3 local, float settleSeconds = 0.7f)
+        {
+            if (prop == null)
+            {
+                return;
+            }
+
+            anchors[prop] = local;
+            settleUntil[prop] = Time.time + settleSeconds;
         }
 
         /// <summary>服务端：装一件货上板。件数上限是硬闸门，载重超限只提示不禁止。</summary>
@@ -76,6 +98,7 @@ namespace ScavengeNightmare.Cart
             }
 
             anchors.Remove(prop);
+            settleUntil.Remove(prop);
             Recalculate();
             return true;
         }
@@ -86,6 +109,7 @@ namespace ScavengeNightmare.Cart
             List<GrabbableProp> removed = new(items);
             items.Clear();
             anchors.Clear();
+            settleUntil.Clear();
             Recalculate();
             return removed;
         }
@@ -128,6 +152,10 @@ namespace ScavengeNightmare.Cart
                     anchor = new Vector3(local.x, local.y, local.z);
                     anchors[prop] = anchor;
                 }
+
+                // 落稳期已回滚：把货物临时设成 kinematic 再解冻，会在解冻瞬间与车体发生
+                // 穿透修正，60kg 件被抛到 260 米外（物理数值发散）。
+                // 教训：不要在运行时改刚体的 kinematic 状态来做「软锁定」，改用位置约束。
 
                 // 水平软约束：把货物的水平位置锚定在装车点，竖直方向完全交给物理。
                 //
