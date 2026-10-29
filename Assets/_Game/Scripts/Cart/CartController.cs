@@ -495,6 +495,9 @@ namespace ScavengeNightmare.Cart
 
             if (prop.Body != null)
             {
+                // 板上货物开连续碰撞检测：42kg 大件落板时的冲击会把旁边的 1kg 轻件
+                // 在一次物理步内推出板外（质量比 42:1，离散检测来不及处理）。
+                prop.Body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
                 prop.Body.MovePosition(top);
                 prop.Body.MoveRotation(Quaternion.identity);
                 prop.Body.velocity = Vector3.zero;

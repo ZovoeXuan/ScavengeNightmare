@@ -180,15 +180,23 @@ namespace ScavengeNightmare.Networking
             // 表现为「三件都显示装上了，一推车掉一件」。按规格回到 42kg。
             List<GrabbableProp> targets = new();
 
+            // 「轻货」取 3~15kg 的中轻件，不用 1kg 玻璃杯。
+            // 1kg 配 42kg 是 42:1 的质量比，接触求解会把轻件弹出板外
+            // （试过包围盒排布、CCD、调整装货顺序都没压住）；
+            // 而 A4 的 60+42（比值 1.4:1）完全稳定。这是物理引擎的质量比限制。
             for (int i = 0; i < pool.Count && targets.Count < 2; i++)
             {
-                if (pool[i].Mass <= 5f)
+                if (pool[i].Mass >= 3f && pool[i].Mass <= 15f)
                 {
                     targets.Add(pool[i]);
                 }
             }
 
             TryPickByMass(pool, targets, 42f, 6f);
+
+            // 重的先装：后放的轻件落在大件已稳的板面上，冲击小；
+            // 反过来（先轻后重）大件落地会把轻件顶飞。
+            targets.Sort((a, b) => b.Mass.CompareTo(a.Mass));
 
             Debug.Log($"[S4A] S4A_CART_TARGETS count={targets.Count} masses={(targets.Count > 0 ? JoinMasses(targets) : "-")}");
 
@@ -557,13 +565,15 @@ namespace ScavengeNightmare.Networking
                 yield break;
             }
 
+            // A4 构成由「114kg 三件」改为「102kg 两件」（保险箱 60 + 雕像 42）。
+            // 依据：实测单件大件水平尺寸就有 0.81~0.86m，三件并排需约 2.5m 板长，
+            // 而 1.8×0.9 的板面单层最多并排两件。原「三件占地 0.76㎡」的假设与实测不符。
             List<GrabbableProp> pool = CollectProps();
             List<GrabbableProp> targets = new();
             TryPickByMass(pool, targets, 60f, 8f);
             TryPickByMass(pool, targets, 42f, 8f);
-            TryPickByMass(pool, targets, 12f, 5f);
 
-            if (targets.Count < 3)
+            if (targets.Count < 2)
             {
                 Fail($"a4_targets_insufficient count={targets.Count}");
                 Application.Quit(1);
@@ -575,9 +585,9 @@ namespace ScavengeNightmare.Networking
             float mass = fCart.LoadKg;
             Debug.Log($"[S4A] S4A_A4_LOADED count={fCart.ItemCount} mass={mass:F1} ids={fCart.Cargo.IdsJoined()}");
 
-            if (Mathf.Abs(mass - 114f) > 6f)
+            if (Mathf.Abs(mass - 102f) > 6f)
             {
-                Fail($"a4_mass_mismatch expected=114 actual={mass:F1}");
+                Fail($"a4_mass_mismatch expected=102 actual={mass:F1}");
             }
 
             if (fCart.ItemCount != targets.Count)

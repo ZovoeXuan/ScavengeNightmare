@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 93e85b6c548b55f488d96733fe439012, type: 3}
   m_Name: Cart_Default
   m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Cart.CartProfile
-  deckLength: 1.3
-  deckWidth: 0.75
+  deckLength: 1.8
+  deckWidth: 0.9
   deckHeight: 0.12
   foldedWidth: 0.3
   handleHeight: 0.9

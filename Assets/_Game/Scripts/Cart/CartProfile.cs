@@ -12,9 +12,10 @@ namespace ScavengeNightmare.Cart
     public sealed class CartProfile : ScriptableObject
     {
         [Header("尺寸（米）")]
-        [Tooltip("展开板面长 1.3 × 宽 0.75 = 0.975 ㎡，单层放得下三件 114kg 货")]
-        public float deckLength = 1.3f;
-        public float deckWidth = 0.75f;
+        [Tooltip("实测：保险箱 0.81m、雕像 0.85m、电视 0.86m 宽。1.3×0.75 连两件大件都放不下"
+               + "（0.81+0.85=1.66m）。1.8×0.9 是能单层并排两件大件的最小尺寸。")]
+        public float deckLength = 1.8f;
+        public float deckWidth = 0.9f;
         public float deckHeight = 0.12f;
         [Tooltip("折叠后宽度 0.3m，窄门 1.2m 与楼梯都靠它")]
         public float foldedWidth = 0.3f;
