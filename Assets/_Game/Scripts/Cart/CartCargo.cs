@@ -19,7 +19,7 @@ namespace ScavengeNightmare.Cart
     public sealed class CartCargo : MonoBehaviour
     {
         private readonly List<GrabbableProp> items = new();
-        private readonly Dictionary<GrabbableProp, Vector3> lastLocal = new();
+        private readonly Dictionary<GrabbableProp, Vector3> anchors = new();
 
         private CartProfile profile;
         private Transform deckTransform;
@@ -64,12 +64,6 @@ namespace ScavengeNightmare.Cart
             }
 
             items.Add(prop);
-
-            if (prop.Body != null)
-            {
-                lastLocal[prop] = deckTransform != null ? deckTransform.InverseTransformPoint(prop.Body.position) : prop.Body.position;
-            }
-
             Recalculate();
             return true;
         }
@@ -81,7 +75,7 @@ namespace ScavengeNightmare.Cart
                 return false;
             }
 
-            lastLocal.Remove(prop);
+            anchors.Remove(prop);
             Recalculate();
             return true;
         }
@@ -91,7 +85,7 @@ namespace ScavengeNightmare.Cart
         {
             List<GrabbableProp> removed = new(items);
             items.Clear();
-            lastLocal.Clear();
+            anchors.Clear();
             Recalculate();
             return removed;
         }
@@ -112,16 +106,6 @@ namespace ScavengeNightmare.Cart
                 return;
             }
 
-            Vector3 deckPos = deckTransform.position;
-            Vector3 delta = deckPos - lastDeckPosition;
-            delta.y = 0f;
-
-            // 单帧位移上限：防止高速推行时货物被瞬移穿板
-            if (delta.magnitude > profile.maxFrameMove)
-            {
-                delta = delta.normalized * profile.maxFrameMove;
-            }
-
             float halfX = profile.deckLength * 0.5f;
             float halfZ = profile.deckWidth * 0.5f;
             float margin = profile.cargoFallMargin;
@@ -130,37 +114,47 @@ namespace ScavengeNightmare.Cart
             {
                 GrabbableProp prop = items[i];
 
-                if (prop == null)
+                if (prop == null || prop.Body == null)
                 {
                     items.RemoveAt(i);
                     continue;
                 }
 
                 Rigidbody body = prop.Body;
-                if (body == null)
+                Vector3 local = deckTransform.InverseTransformPoint(body.position);
+
+                if (!anchors.TryGetValue(prop, out Vector3 anchor))
                 {
-                    items.RemoveAt(i);
-                    continue;
+                    anchor = new Vector3(local.x, local.y, local.z);
+                    anchors[prop] = anchor;
                 }
 
-                body.MovePosition(body.position + delta);
+                // 水平软约束：把货物的水平位置锚定在装车点，竖直方向完全交给物理。
+                //
+                // 为什么必须这么做：纯靠摩擦求解时，60kg 重件与板面发生穿透修正，
+                // 求解器会给它一个横向推力，推行一段后重件就被推出板外（实测 DROP 的
+                // x 到了 0.81，板半长只有 0.65），连带把旁边的轻件一起顶下去。
+                //
+                // 代价是货物在板上不会因惯性滑动——比真实物理更稳，属于稳定性优先的取舍。
+                // 因此「货物甩落」这条噪音来源在推车场景下不会自然发生，
+                // 4B 若要它必须靠撞击/翻车的显式事件，不能指望摩擦把它甩出去。
+                Vector3 wantLocal = new Vector3(anchor.x, local.y, anchor.z);
+                Vector3 wantWorld = deckTransform.TransformPoint(wantLocal);
+                body.MovePosition(new Vector3(wantWorld.x, body.position.y, wantWorld.z));
 
-                Vector3 local = deckTransform.InverseTransformPoint(body.position);
-                lastLocal[prop] = local;
-
-                bool outside = Mathf.Abs(local.x) > halfX + margin
-                               || Mathf.Abs(local.z) > halfZ + margin
-                               || local.y < -0.5f;
+                // 判定只看竖直掉落：水平方向已由上面的锚点约束保证恒等于装车点，
+                // 而 MovePosition 是延迟生效的，立刻重读 body.position 拿到的还是旧值——
+                // 在车被瞬移的那一帧会读到一个几十米外的坐标，把好货全判成滑落。
+                bool outside = local.y < -0.5f;
 
                 if (outside)
                 {
                     items.RemoveAt(i);
-                    lastLocal.Remove(prop);
+                    anchors.Remove(prop);
                     Debug.Log($"[S4A] GATE_CART_DROP id={(prop.Profile != null ? prop.Profile.id : "?")} mass={prop.Mass:F1} local=({local.x:F2},{local.z:F2})");
                 }
             }
 
-            lastDeckPosition = deckPos;
             Recalculate();
         }
 

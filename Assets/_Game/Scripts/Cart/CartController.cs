@@ -62,6 +62,7 @@ namespace ScavengeNightmare.Cart
 
         private PlayerMotor[] playerCache;
         private float nextPlayerRefresh;
+        private float interactDebugTimer;
 
         public CartState State => (CartState)stateInt;
         public float LoadKg => loadKg;
@@ -356,6 +357,13 @@ namespace ScavengeNightmare.Cart
                 GrabController grab = motor.GetComponent<GrabController>();
                 bool holding = grab != null && grab.IsHolding;
 
+                interactDebugTimer += Time.unscaledDeltaTime;
+                if (interactDebugTimer >= 0.5f)
+                {
+                    interactDebugTimer = 0f;
+                    Debug.Log($"[S4A] S4A_CART_INTERACT_DEBUG held={held} pressed={pressed} inReach={inReach} dist={dist:F2} holding={holding} state={State} count={cargo.Count}");
+                }
+
                 if (holding)
                 {
                     TryLoadFrom(grab);
@@ -389,11 +397,25 @@ namespace ScavengeNightmare.Cart
 
             grab.Release(false);
 
-            // 放到板面正上方一点点，让它自己落下——直接塞进板里会被物理弹飞
+            // 放到碰撞体上表面之上一点点，让它自然落到板面。
+            // 放进碰撞体内部的话物理会把它弹飞——症状是「装车成功、一推行全掉」。
+            BoxCollider hull = GetComponent<BoxCollider>();
+            float hullTop = hull != null ? hull.center.y + hull.size.y * 0.5f : profile.deckHeight;
+
+            // 按件数在板面上分散摆放：全部堆在中心会互相挤，60kg 的大件一落下
+            // 就把旁边的轻件顶出板外（实测三件全掉，DROP 的 z 都在 0.53 左右）。
+            int index = Mathf.Max(0, cargo.Count - 1);
+            int col = index % 3;
+            int row = index / 3;
+            float lx = (col - 1) * profile.deckLength * 0.28f;
+            float lz = (row == 0 ? -1f : 1f) * profile.deckWidth * 0.22f;
+
+            Vector3 top = transform.TransformPoint(new Vector3(lx, hullTop + 0.18f, lz));
+
             if (prop.Body != null)
             {
-                Vector3 top = transform.position + Vector3.up * (profile.deckHeight + 0.35f);
                 prop.Body.MovePosition(top);
+                prop.Body.MoveRotation(Quaternion.identity);
                 prop.Body.velocity = Vector3.zero;
                 prop.Body.angularVelocity = Vector3.zero;
             }
@@ -550,6 +572,43 @@ namespace ScavengeNightmare.Cart
             nextPlayerRefresh = Time.unscaledTime + 0.25f;
             playerCache = FindObjectsByType<PlayerMotor>(FindObjectsSortMode.None);
             return playerCache;
+        }
+
+        /// <summary>
+        /// 自动化专用：瞬移推车，并让车上货物跟着一起走。
+        /// 正式玩法里不存在「车瞬移」，这只是为了让 -s4acart 能一步把车挪到公秤停车位。
+        /// 不带上货的话，下一帧的水平锚点约束会把货从几十米外硬拽回来，中途被判成滑落。
+        /// </summary>
+        [Server]
+        public void TeleportWithCargo(Vector3 position)
+        {
+            if (body == null)
+            {
+                return;
+            }
+
+            Vector3 delta = position - body.position;
+            body.MovePosition(position);
+            body.velocity = Vector3.zero;
+            body.angularVelocity = Vector3.zero;
+
+            if (cargo != null)
+            {
+                foreach (GrabbableProp prop in cargo.Items)
+                {
+                    if (prop == null || prop.Body == null)
+                    {
+                        continue;
+                    }
+
+                    prop.Body.MovePosition(prop.Body.position + delta);
+                    prop.Body.velocity = Vector3.zero;
+                    prop.Body.angularVelocity = Vector3.zero;
+                }
+            }
+
+            Physics.SyncTransforms();
+            Debug.Log($"[S4A] S4A_CART_TELEPORT to=({position.x:F1},{position.z:F1}) cargo={(cargo != null ? cargo.Count : 0)}");
         }
 
         /// <summary>停车位触发区调用（服务端）。</summary>

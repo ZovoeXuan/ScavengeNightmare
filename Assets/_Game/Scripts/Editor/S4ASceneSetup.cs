@@ -133,6 +133,7 @@ namespace ScavengeNightmare.EditorTools
 
             Check(saveService, "gameroot_save_service");
             Check(nm != null && nm.GetComponent<S4ASaveTest>() != null, "save_test_attached");
+            Check(nm != null && nm.GetComponent<S4ACartTest>() != null, "cart_test_attached");
 
             GameObject cart = AssetDatabase.LoadAssetAtPath<GameObject>(CartPrefabPath);
             Check(cart != null, "cart_prefab_exists");
@@ -324,9 +325,12 @@ namespace ScavengeNightmare.EditorTools
             rb.angularDamping = 4f;
             rb.interpolation = RigidbodyInterpolation.Interpolate;
 
+            // 碰撞体上表面必须等于板视觉上表面（都取 topY），否则货物会被放进碰撞体内部
+            // 然后被物理弹飞——表现是「装车成功、一推行全掉」。
+            float topY = profile.deckHeight + 0.28f;
             BoxCollider hull = root.AddComponent<BoxCollider>();
-            hull.size = new Vector3(profile.deckLength, 0.5f, profile.deckWidth);
-            hull.center = new Vector3(0f, 0.3f, 0f);
+            hull.size = new Vector3(profile.deckLength, topY, profile.deckWidth);
+            hull.center = new Vector3(0f, topY * 0.5f, 0f);
 
             // 板面摩擦：货物能不能待在板上全靠它（配合 CartCargo 的平台带动）
             PhysicsMaterial mat = new("CartDeck")
@@ -346,11 +350,12 @@ namespace ScavengeNightmare.EditorTools
 
             hull.material = mat;
 
+            // 板视觉顶部与 hull 顶部对齐，货物才会真的「躺在板上」而不是浮空或被弹飞
             GameObject deck = GameObject.CreatePrimitive(PrimitiveType.Cube);
             deck.name = "Deck";
             deck.transform.SetParent(root.transform, false);
             deck.transform.localScale = new Vector3(profile.deckLength, profile.deckHeight, profile.deckWidth);
-            deck.transform.localPosition = new Vector3(0f, 0.25f, 0f);
+            deck.transform.localPosition = new Vector3(0f, topY - profile.deckHeight * 0.5f, 0f);
             UnityEngine.Object.DestroyImmediate(deck.GetComponent<Collider>());
 
             GameObject handle = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -459,6 +464,11 @@ namespace ScavengeNightmare.EditorTools
             if (host.GetComponent<S4ASaveTest>() == null)
             {
                 host.AddComponent<S4ASaveTest>();
+            }
+
+            if (host.GetComponent<S4ACartTest>() == null)
+            {
+                host.AddComponent<S4ACartTest>();
             }
 
             EditorUtility.SetDirty(host);
