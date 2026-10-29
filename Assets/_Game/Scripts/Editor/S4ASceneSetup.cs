@@ -3,6 +3,7 @@ using Mirror;
 using ScavengeNightmare.Economy;
 using ScavengeNightmare.Gameplay;
 using ScavengeNightmare.Networking;
+using ScavengeNightmare.Save;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -117,13 +118,23 @@ namespace ScavengeNightmare.EditorTools
 
             Check(registered, "gameroot_registered");
 
+            bool saveService = false;
+            if (nm != null)
+            {
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(GameRootPrefab);
+                saveService = prefab != null && prefab.GetComponent<P0SaveService>() != null;
+            }
+
+            Check(saveService, "gameroot_save_service");
+            Check(nm != null && nm.GetComponent<S4ASaveTest>() != null, "save_test_attached");
+
             GameObject player = AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefab);
             Check(player != null, "player_prefab_exists");
             Check(player != null && player.GetComponent<PlayerInteract>() != null, "player_interact_attached");
 
             if (failures == 0)
             {
-                Debug.Log($"[S4A] S4A_VALIDATE_OK night1=1 quotaTerminal=1 anchors=16 evacRemoved=1 traits=none gameroot=1");
+                Debug.Log($"[S4A] S4A_VALIDATE_OK night1=1 quotaTerminal=1 anchors=16 evacRemoved=1 traits=none gameroot=1 saveService=1 saveTest=1");
             }
         }
 
@@ -132,12 +143,24 @@ namespace ScavengeNightmare.EditorTools
             GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(GameRootPrefab);
             if (existing != null)
             {
+                // Story 2 起 GameRoot 必须带 P0SaveService。老预制体要就地补齐——
+                // 只写「不存在才新建」的话，已经存在的 GameRoot 永远不会拿到存档组件。
+                if (existing.GetComponent<P0SaveService>() == null)
+                {
+                    existing.AddComponent<P0SaveService>();
+                    EditorUtility.SetDirty(existing);
+                    PrefabUtility.SavePrefabAsset(existing);
+                    AssetDatabase.SaveAssets();
+                    Debug.Log("[S4A] S4A_PREFAB_SAVE_SERVICE_ADDED path=" + GameRootPrefab);
+                }
+
                 return existing;
             }
 
             GameObject go = new("S4AGameRoot");
             go.AddComponent<NetworkIdentity>();
             go.AddComponent<TeamAccount>();
+            go.AddComponent<P0SaveService>();
 
             GameObject saved = PrefabUtility.SaveAsPrefabAsset(go, GameRootPrefab);
             UnityEngine.Object.DestroyImmediate(go);
@@ -278,6 +301,11 @@ namespace ScavengeNightmare.EditorTools
             if (host.GetComponent<S4ADepositTest>() == null)
             {
                 host.AddComponent<S4ADepositTest>();
+            }
+
+            if (host.GetComponent<S4ASaveTest>() == null)
+            {
+                host.AddComponent<S4ASaveTest>();
             }
 
             EditorUtility.SetDirty(host);

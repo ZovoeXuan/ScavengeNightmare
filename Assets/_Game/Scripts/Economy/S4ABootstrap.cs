@@ -1,4 +1,5 @@
 using Mirror;
+using ScavengeNightmare.Save;
 using UnityEngine;
 
 namespace ScavengeNightmare.Economy
@@ -6,6 +7,10 @@ namespace ScavengeNightmare.Economy
     /// <summary>
     /// 4A 启动器：服务端起来后运行时 Spawn 一个 GameRoot，并 DontDestroyOnLoad。
     /// 不能把账本放在场景对象上 —— Mirror 切场景会 unspawn 场景对象。
+    ///
+    /// Story 2 起启动顺序固定为：
+    /// Instantiate → P0SaveService.Initialize/LoadOrCreate → NetworkServer.Spawn(TeamAccount)。
+    /// 存档必须在 Spawn 之前加载完，否则账本的 SyncVar 会先带着 0 广播出去。
     /// </summary>
     public sealed class S4ABootstrap : MonoBehaviour
     {
@@ -13,6 +18,14 @@ namespace ScavengeNightmare.Economy
 
         private void Start()
         {
+            // verify / corrupt 是纯离线文件操作，不需要（也不该）起一个 Host：
+            // 起来就会占住存档锁，反而让校验进程读不到真实文件。
+            if (S4ACli.Any("-s4asave-verify", "-s4acorrupt"))
+            {
+                Debug.Log("[S4A] S4A_BOOT_SKIP reason=offline_save_mode");
+                return;
+            }
+
             StartCoroutine(BootWhenServerReady());
         }
 
@@ -53,9 +66,28 @@ namespace ScavengeNightmare.Economy
             GameObject go = Instantiate(gameRootPrefab);
             go.name = "S4AGameRoot";
             DontDestroyOnLoad(go);
+
+            P0SaveService save = go.GetComponent<P0SaveService>();
+            if (save == null)
+            {
+                // 缺存档服务还继续 Spawn，会得到一份「看起来能用、其实写不进盘」的账本——宁可当场炸。
+                Debug.LogError("[S4A] S4A_BOOT_FAIL reason=missing_save_service");
+                yield break;
+            }
+
+            save.Initialize(S4ACli.ResolveSaveDir(), true);
+            save.LoadOrCreate();
+
+            if (save.State == SaveState.Locked)
+            {
+                // 双开时仍把 GameRoot 挂上（HUD 要显示 LOCKED、入账要被明确拒绝），
+                // 但绝不允许写盘：TryCommit 会以 reason=locked 拒绝。
+                Debug.LogError("[S4A] S4A_BOOT_LOCKED note=wallet_in_use_readonly_session");
+            }
+
             NetworkServer.Spawn(go);
 
-            Debug.Log("[S4A] S4A_BOOT_OK spawned=1");
+            Debug.Log($"[S4A] S4A_BOOT_OK spawned=1 save_state={save.State} dir={save.SaveDir}");
         }
     }
 }

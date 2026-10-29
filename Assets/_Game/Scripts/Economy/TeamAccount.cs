@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Mirror;
 using ScavengeNightmare.Gameplay;
+using ScavengeNightmare.Save;
 using UnityEngine;
 
 namespace ScavengeNightmare.Economy
@@ -15,8 +16,18 @@ namespace ScavengeNightmare.Economy
     {
         public static TeamAccount Instance { get; private set; }
 
-        /// <summary>Story 1 是纯内存态：没有落盘，重开进程余额归零。Story 2 才会变成 true。</summary>
-        public static bool Persisted => false;
+        /// <summary>
+        /// Story 2 起为 true，但只在「存档服务已加载」时成立：
+        /// 没加载成功的进程必须诚实地报 false，不能让下游以为钱已经在盘上了。
+        /// </summary>
+        public static bool Persisted
+        {
+            get
+            {
+                P0SaveService svc = P0SaveService.Instance;
+                return svc != null && svc.Loaded && svc.State != SaveState.Locked && svc.State != SaveState.Failed;
+            }
+        }
 
         [SyncVar] private long balance;
         [SyncVar] private int legProgress;
@@ -26,6 +37,7 @@ namespace ScavengeNightmare.Economy
         [SyncVar] private bool quotaReached;
 
         private readonly HashSet<string> committed = new();
+        private bool warnedNoSave;
 
         public long Balance => balance;
         public int LegProgress => legProgress;
@@ -68,9 +80,33 @@ namespace ScavengeNightmare.Economy
         {
             base.OnStartServer();
 
+            P0SaveService save = P0SaveService.Instance;
+            bool restored = false;
+            int persistedRunId = 0;
+
+            if (save != null && save.Loaded)
+            {
+                TeamSaveData d = save.Data;
+                persistedRunId = d.runId;
+
+                balance = d.balance;
+                legProgress = d.legProgress;
+                legQuota = d.legQuota > 0 ? d.legQuota : 1800;
+                legIndex = d.legIndex > 0 ? d.legIndex : 1;
+                quotaReached = d.quotaReached;
+                CommittedTotal = (int)d.sumCommitted;
+                AcceptedCount = d.txnCount;
+                restored = true;
+
+                // 跨进程重启 = 新的一局：netId 会被复用，沿用旧 runId 会让新物件撞上旧 cargoId，
+                // 表现是「这货怎么交都进不了账」。所以钱留下来，runId 换新，去重表从空开始。
+                // 同进程重连（Host 不重启）不受影响，内存去重表仍然有效。
+                runId = NewRunId();
+            }
+
             if (runId == 0)
             {
-                runId = (int)(System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % int.MaxValue);
+                runId = NewRunId();
             }
 
             if (legIndex <= 0)
@@ -83,7 +119,17 @@ namespace ScavengeNightmare.Economy
                 legQuota = 1800;
             }
 
-            Debug.Log($"[S4A] S4A_ACCOUNT_READY runId={runId} legIndex={legIndex} quota={legQuota} balance={balance}");
+            if (restored)
+            {
+                Debug.Log($"[S4A] S4A_ACCOUNT_RESTORED balance={balance} legProgress={legProgress} legIndex={legIndex} quota={legQuota} txn={AcceptedCount} persistedRunId={persistedRunId} runId={runId}");
+            }
+
+            Debug.Log($"[S4A] S4A_ACCOUNT_READY runId={runId} legIndex={legIndex} quota={legQuota} balance={balance} persisted={Persisted}");
+        }
+
+        private static int NewRunId()
+        {
+            return new System.Random(System.Guid.NewGuid().GetHashCode()).Next(1, int.MaxValue);
         }
 
         public static string CargoId(GrabbableProp prop)
@@ -144,22 +190,72 @@ namespace ScavengeNightmare.Economy
                 return false;
             }
 
+            long newBalance = balance + value;
+            int newProgress = legProgress + value;
+
+            // 达标开门的判据源（QA 的 Q1/Q2）：超额必须照常入账、不截断，
+            // carry_over 就是「交超了没有吃亏」的证据。
+            bool newReached = quotaReached || newProgress >= legQuota;
+
+            P0SaveService save = P0SaveService.Instance;
+            if (save != null)
+            {
+                if (!save.Loaded)
+                {
+                    // 存档服务在、但没加载成功（锁被占 / 目录不可写）：必须整笔拒绝。
+                    // 这里绝不能退回内存路径——那会在只读盘上显示「入账成功」，是最坏的一种假账。
+                    Debug.Log($"[S4A] S4A_DEPOSIT cargoId={cargoId} value={value} state=Rejected reason=save_unavailable save_state={save.State} balance={balance} legProgress={legProgress} totalAfter={balance}");
+                    Debug.LogError($"[S4A] S4A_SAVE_REJECT cargoId={cargoId} value={value} reason=save_unavailable state={save.State}");
+                    return false;
+                }
+
+                TeamSaveData next = save.Data.Clone();
+                if (next == null)
+                {
+                    Debug.LogError($"[S4A] S4A_SAVE_REJECT cargoId={cargoId} value={value} reason=clone_failed");
+                    return false;
+                }
+
+                next.runId = runId;
+                next.legIndex = legIndex;
+                next.legQuota = legQuota;
+                next.balance = newBalance;
+                next.legProgress = newProgress;
+                next.quotaReached = newReached;
+
+                SaveTxnRecord record = new()
+                {
+                    cargoId = cargoId,
+                    value = value,
+                    legIndex = legIndex,
+                    balanceAfter = newBalance,
+                    tsUnixMs = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                };
+
+                // 先落盘、再动内存。写失败就整笔拒绝：宁可让玩家重交一次，
+                // 也不能出现「HUD 上有钱、盘上没有」的假账。
+                if (!save.TryCommit(next, record, out string saveError))
+                {
+                    Debug.Log($"[S4A] S4A_DEPOSIT cargoId={cargoId} value={value} state=Rejected reason=save_failed detail={saveError} balance={balance} legProgress={legProgress} totalAfter={balance}");
+                    Debug.LogError($"[S4A] S4A_SAVE_REJECT cargoId={cargoId} value={value} reason={saveError}");
+                    return false;
+                }
+            }
+            else
+            {
+                WarnSaveAbsentOnce();
+            }
+
             committed.Add(cargoId);
-            balance += value;
-            legProgress += value;
+            balance = newBalance;
+            legProgress = newProgress;
+            quotaReached = newReached;
             CommittedTotal += value;
             AcceptedCount++;
             LastCommittedId = cargoId;
             LastCommittedValue = value;
 
             Debug.Log($"[S4A] S4A_DEPOSIT cargoId={cargoId} value={value} state=Committed reason=- balance={balance} legProgress={legProgress} totalAfter={balance}");
-
-            // 达标开门的判据源（QA 的 Q1/Q2）：超额必须照常入账、不截断，
-            // carry_over 就是「交超了没有吃亏」的证据。
-            if (!quotaReached && legProgress >= legQuota)
-            {
-                quotaReached = true;
-            }
 
             Debug.Log($"[S4A] GATE_QUOTA_GATE leg={legIndex} progress={legProgress} quota={legQuota} carry_over={Mathf.Max(0, legProgress - legQuota)} portal={(quotaReached ? "unlocked" : "locked")}");
 
@@ -177,18 +273,87 @@ namespace ScavengeNightmare.Economy
             return true;
         }
 
+        /// <summary>
+        /// 没有存档服务时（Main / Supermarket 等 D3–D13 基线场景）退回 Story 1 的纯内存行为。
+        /// 这条降级路径必须存在，否则 4A 的改动会把回归基线一起改掉；但也必须喊一声，
+        /// 不能让人误以为钱已经落盘。
+        /// </summary>
+        private void WarnSaveAbsentOnce()
+        {
+            if (warnedNoSave)
+            {
+                return;
+            }
+
+            warnedNoSave = true;
+            Debug.LogWarning("[S4A] S4A_SAVE_ABSENT path=memory reason=no_save_service");
+        }
+
         [Server]
         public void SetQuota(int quota)
         {
+            P0SaveService save = P0SaveService.Instance;
+            if (save != null)
+            {
+                if (!save.Loaded)
+                {
+                    Debug.LogError($"[S4A] S4A_SAVE_REJECT phase=set_quota quota={quota} reason=save_unavailable state={save.State}");
+                    return;
+                }
+
+                TeamSaveData next = save.Data.Clone();
+                if (next != null)
+                {
+                    next.legQuota = quota;
+                    next.balance = balance;
+                    next.legProgress = legProgress;
+                    next.legIndex = legIndex;
+                    next.quotaReached = quotaReached;
+                    if (!save.TryCommitState(next, "set_quota", out string err))
+                    {
+                        Debug.LogError($"[S4A] S4A_SAVE_REJECT phase=set_quota quota={quota} reason={err}");
+                        return;
+                    }
+                }
+            }
+
             legQuota = quota;
         }
 
         [Server]
         public void NextLeg(int quota)
         {
-            legIndex++;
+            int nextIndex = legIndex + 1;
+            int nextQuota = quota;
+
+            P0SaveService save = P0SaveService.Instance;
+            if (save != null)
+            {
+                if (!save.Loaded)
+                {
+                    Debug.LogError($"[S4A] S4A_SAVE_REJECT phase=next_leg target={nextIndex} reason=save_unavailable state={save.State}");
+                    return;
+                }
+
+                TeamSaveData next = save.Data.Clone();
+                if (next != null)
+                {
+                    next.legIndex = nextIndex;
+                    next.legProgress = 0;
+                    next.legQuota = nextQuota;
+                    next.quotaReached = false;
+                    next.balance = balance;
+                    if (!save.TryCommitState(next, "next_leg", out string err))
+                    {
+                        Debug.LogError($"[S4A] S4A_SAVE_REJECT phase=next_leg target={nextIndex} reason={err}");
+                        return;
+                    }
+                }
+            }
+
+            legIndex = nextIndex;
             legProgress = 0;
-            legQuota = quota;
+            legQuota = nextQuota;
             quotaReached = false;
             Debug.Log($"[S4A] GATE_LEVEL n={legIndex} quota={legQuota} source=table before={balance} after={balance}");
         }

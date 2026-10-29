@@ -1,9 +1,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using Mirror;
 using ScavengeNightmare.Economy;
 using ScavengeNightmare.Gameplay;
+using ScavengeNightmare.Save;
 using UnityEngine;
 
 namespace ScavengeNightmare.Networking
@@ -49,6 +51,28 @@ namespace ScavengeNightmare.Networking
             // 而且断言会在“被污染的世界里自洽通过”，是最难查的一类假通过。
             ScavengeNightmare.Traits.TraitSettings.ForceNoTraits = true;
             Debug.Log("[S4A] S4A_NEUTRAL_OK traits=none");
+
+            // Story 2 起账本会落盘。这个用例的 TALLY 断言的是「本轮 accepted == 本轮 unique」，
+            // 一旦把上一轮的 txn/balance 恢复进来，断言会立刻变成历史累计值而对不上。
+            // 所以未显式指定目录时，用独立测试目录并在开跑前清空——绝不碰默认的玩家存档目录。
+            if (string.IsNullOrEmpty(S4ACli.Value("-savedir=")))
+            {
+                string testDir = Path.Combine(Application.persistentDataPath, "S4A_test_deposit");
+                try
+                {
+                    if (Directory.Exists(testDir))
+                    {
+                        Directory.Delete(testDir, true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[S4A] S4A_TEST_DIR_CLEAN_FAIL dir={testDir} type={ex.GetType().Name}");
+                }
+
+                S4ACli.SaveDirOverride = testDir;
+                Debug.Log($"[S4A] S4A_TEST_SAVE_DIR dir={testDir} cleaned=1");
+            }
 
             NetworkManager manager = NetworkManager.singleton;
             if (manager == null)
@@ -220,7 +244,10 @@ namespace ScavengeNightmare.Networking
             bool clean = failures == 0;
 
             Debug.Log($"[S4A] S4A_DEPOSIT_TALLY accepted={accepted} uniqueCargo={unique} expectedSum={expected} actualSum={actual} dupBlocked={account.DupBlocked} failures={failures} ok={tallyOk && clean}");
-            Debug.Log($"[S4A] GATE_WALLET expected={expected} actual={actual} delta={(int)actual - expected} path=(memory) persisted={TeamAccount.Persisted}");
+
+            P0SaveService save = P0SaveService.Instance;
+            string walletPath = save != null ? Path.Combine(save.SaveDir, P0SaveService.SavName) : "(memory)";
+            Debug.Log($"[S4A] GATE_WALLET expected={expected} actual={actual} delta={(int)actual - expected} path={walletPath} persisted={TeamAccount.Persisted}");
 
             if (tallyOk && clean)
             {

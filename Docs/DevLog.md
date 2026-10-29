@@ -226,3 +226,26 @@
 - **复审后验收**：`S4A_DEPOSIT_TALLY accepted=4 uniqueCargo=4 expectedSum=2650 actualSum=2650 dupBlocked=1 failures=0 ok=True`、`S4A_STORY1_OK balance=2650 reloadSurvived=True`。
 - **复审后回归**：D4 投掷 4.14、D6 五条、D8 八项、D9 七项全过——证明给 `Player.prefab` 加组件对基线完全惰性。
 - **本轮新增踩坑**：**服务器不能读本地输入**。凡是「长按/按键」类交互，必须是客户端 `[Command]` 上报，否则主机模式自测永远通过、一上双人就废。
+
+## Sprint 4A · Story 2 · P0SaveService：原子写 / 三级备份 / 强杀恢复（2026-10-29）
+
+- **做了什么**：新增 `Save/TeamSaveData`（含 `SaveTxnRecord` 事务流水）、`Save/P0SaveService`（`Initialize` / `LoadOrCreate` / `TryCommit` / `TryCommitState` / `WriteAtomic` / 单实例锁）、`Save/S4ACli`、`Networking/S4ASaveTest`、`Tools/s4a_save_suite.sh`；`TeamAccount` 全量改为「先落盘、再改内存」；`S4ABootstrap` 启动顺序改为 `Instantiate → Initialize/LoadOrCreate → NetworkServer.Spawn`；`WalletHUD` 增加存档状态行（SAVED / RECOVERED / CORRUPT / LOCKED / FAILED，异常态变红）。
+- **写盘链路**：`FileStream(tmp) + Flush(true)` → `bak2` 删除 → `bak → bak2` → `File.Replace(tmp, sav, bak)`；非 NTFS 抛 `PlatformNotSupportedException` 时降级为「删 sav → Move(tmp,sav)」并记 `S4A_SAVE_FALLBACK_NONATOMIC`。校验和放在文件首行（`SHA256:<hex>\n{json}`），不塞进 JSON 内部，避免「算校验和要先清空校验和字段」的自指问题和字段顺序依赖。
+- **验收（33 项全过，`S4A_STORY2_SUITE_OK`）**：
+  - C1 三笔提交：`S4A_SAVE_OK txn=3 balance=2100`，每笔后立刻 `S4A_SAVE_IMMEDIATE disk_balance=` 与内存一致——**不等退出就能从盘上读到**。
+  - C2 重启校验：`S4A_SAVE_VERIFY_OK txn=3 dup=0 balance=2100 sumCommitted=2100 from=sav`、`GATE_WALLET expected=2100 actual=2100 delta=0`。
+  - C3 外部强杀：`taskkill /F` 停在第 3 笔 → 重启 `txn=3 balance=1500`，正好等于最后一条成功事务。
+  - C4 进程内 `Environment.Exit` 对照：同样停在 txn=3 → `txn=3 balance=1500`，与 C3 **逐字一致**，证明 `OnApplicationQuit` / `ProcessExit` 没有任何偷偷刷盘。
+  - C5 `sav` 改坏 → `S4A_SAVE_RECOVERED from=bak`，回退到上一笔（txn=2/1200），坏档留证 `corrupt-*-sav.sav`。
+  - C6 三档全坏 → `S4A_SAVE_CORRUPT_RECOVERED`，3 个坏档全部留证，新建空档后可继续使用。
+  - C7 写失败注入：`S4A_SAVE_FAIL reason=io_error` + `memory_same=True disk_same=True txn_same=True`（内存、磁盘 sha256、事务计数三者均未变）。
+  - C8 不可写路径：`S4A_SAVE_FAIL reason=io_error phase=init`，入账被 `state=Rejected reason=save_unavailable` 拒绝，用例自判 `ok=False`（没有静默降级成内存入账）。
+  - C9 同机双开：第二进程 `S4A_SAVE_LOCKED`、`S4A_SAVE_DOUBLE_OK second_process_readonly=1`，入账被拒。
+- **回归**：重建 Main 后 D4 投掷 **4.14**（与基线逐字一致）、D6 五条全过（滚动 3.87 / 硬直 0.28 / 易碎归零 / 夹手脱手 / 窄门卡位）、D8 八项全过（冲突率 58.7%）。D9 七项留到 S4A-5 收口统一复跑。
+- **踩坑（都是「看起来在跑、其实结论错了」的类型）**：
+  1. **批量删除被安全策略拦下，脚本却继续跑**：首行只打印 `SAFE_DELETE_BULK_CONFIRM_REQUIRED`，上一轮的 `wallet.sav` 原封不动，于是每个用例都从旧余额继续累加，13 条断言整批错位。改成每次用时间戳独立目录，从根上不需要删。
+  2. **`StartHost` 抛异常会让进程永久挂死**：端口没放干净时抛 `SocketException`，异常一抛 `Start` 就中断，协程根本没启动 → 没有 `WaitFor`、没有 `Quit`。加 `try/catch` + 90/150 秒 watchdog + 每个用例独立端口（17701–17712）。
+  3. **强杀与进程内退出必须停在同一个事务点**才叫对照：一开始两边各跑各的（8 笔 vs 2 笔），只能说「各自自洽」，证明不了 `ProcessExit` 有没有刷盘。改成 `-stopafter=3` 死等外部 `taskkill`，与 `-killafter=3` 逐字比对。
+  4. **不持久化 `committedIds`**：`cargoId = runId-legIndex-netId`，而 `netId` 在进程重启后会被复用。把旧 id 带回来会让新局重新生成的物件被误判成重复提交，表现为「这货怎么交都进不了账」。跨进程重启 = 新局：钱留下、`runId` 换新、去重表清空；同进程重连仍由内存去重表保证。
+  5. **存档服务在、但没加载成功时不能退回内存路径**：只读盘 / 双开场景下若降级为内存入账，HUD 会显示「入账成功」而盘上一分没有，是最坏的一种假账。现在一律 `reason=save_unavailable` 整笔拒绝。
+- **遗留 / 下一 Story**：CD6「余额不足购买被拒且磁盘逐字节未变」需要商店，推迟到 Story 4 用真实购买路径验；团灭场景要等 4B 有怪物与倒地；D9 七项与 D11/D12/D13 在 S4A-5 统一收口；存档尚无版本迁移与云同步（P0 不做）。
