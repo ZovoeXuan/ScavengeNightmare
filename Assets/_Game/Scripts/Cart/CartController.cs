@@ -451,6 +451,32 @@ namespace ScavengeNightmare.Cart
                 return;
             }
 
+            // 先按货物**实际包围盒**算落点，放不下就直接拒绝。
+            // 装上去再被挤下来（实测 60kg 保险箱落位后把 1kg 玻璃顶到车前 1.85m）
+            // 比拒绝难排查得多，对玩家也更困惑：明明显示装上了，一推车东西掉一地。
+            float halfLen = profile.deckLength * 0.5f;
+            float cursor = -halfLen;
+
+            foreach (GrabbableProp item in cargo.Items)
+            {
+                if (item == null)
+                {
+                    continue;
+                }
+
+                cursor += HalfWidth(item) * 2f + 0.04f;
+            }
+
+            float myHalf = HalfWidth(prop);
+            float lx = cursor + myHalf;
+            float lz = 0f;
+
+            if (lx + myHalf > halfLen)
+            {
+                Debug.Log($"[S4A] S4A_CART_LOAD_REJECT reason=deck_full id={(prop.Profile != null ? prop.Profile.id : "?")} need={lx + myHalf:F2} limit={halfLen:F2} width={myHalf * 2f:F2}");
+                return;
+            }
+
             if (!cargo.TryLoad(prop, out string reason))
             {
                 Debug.Log($"[S4A] S4A_CART_LOAD_REJECT reason={reason} mass={prop.Mass:F1} count={cargo.Count}");
@@ -464,16 +490,8 @@ namespace ScavengeNightmare.Cart
             BoxCollider hull = GetComponent<BoxCollider>();
             float hullTop = hull != null ? hull.center.y + hull.size.y * 0.5f : profile.deckHeight;
 
-            // 3 列排布（已验证能让 -s4acart 的 3 件轻+重货稳定推行 8.6m）。
-            // 试过 2×2 网格，反而把轻件挤到板边（推行距离从 8.64m 掉到 2.07m），已回滚。
-            int index = Mathf.Max(0, cargo.Count - 1);
-            int col = index % 3;
-            int row = index / 3;
-            float lx = (col - 1) * profile.deckLength * 0.28f;
-            float lz = (row == 0 ? -1f : 1f) * profile.deckWidth * 0.22f;
-
-            Vector3 top = transform.TransformPoint(new Vector3(lx, hullTop + 0.18f, lz));
-            cargo.RegisterAnchor(prop, new Vector3(lx, hullTop + 0.18f, lz), 0f);
+            Vector3 top = transform.TransformPoint(new Vector3(lx, hullTop + 0.06f, lz));
+            cargo.RegisterAnchor(prop, new Vector3(lx, hullTop + 0.06f, lz), 0f);
 
             if (prop.Body != null)
             {
@@ -486,7 +504,7 @@ namespace ScavengeNightmare.Cart
             loadKg = cargo.LoadKg;
             itemCount = cargo.Count;
 
-            Debug.Log($"[S4A] GATE_CART count={cargo.Count} mass={cargo.LoadKg:F1} ids={cargo.IdsJoined()}");
+            Debug.Log($"[S4A] GATE_CART count={cargo.Count} mass={cargo.LoadKg:F1} ids={cargo.IdsJoined()} at_x={lx:F2} width={myHalf * 2f:F2}");
 
             if (cargo.IsOverCapacity())
             {
@@ -497,6 +515,27 @@ namespace ScavengeNightmare.Cart
             {
                 Debug.LogWarning($"[S4A] S4A_CART_OVERLOAD_WARN mass={cargo.LoadKg:F1} hint=tippy");
             }
+        }
+
+        /// <summary>
+        /// 货物的水平半宽。取世界轴对齐包围盒的 x/z 较大值，对旋转物体偏保守——
+        /// 保守只会多留空隙，不会挤到旁边的货。
+        /// </summary>
+        private static float HalfWidth(GrabbableProp prop)
+        {
+            if (prop == null)
+            {
+                return 0.2f;
+            }
+
+            Collider collider = prop.GetComponent<Collider>();
+            if (collider == null)
+            {
+                return 0.2f;
+            }
+
+            Vector3 size = collider.bounds.size;
+            return Mathf.Max(size.x, size.z) * 0.5f;
         }
 
         private void ToggleFold(PlayerMotor motor, GrabController grab)
@@ -629,7 +668,19 @@ namespace ScavengeNightmare.Cart
                     continue;
                 }
 
-                float d = Vector3.Distance(motor.transform.position, transform.position);
+                // 用水平距离判定：把 y 算进去的话，玩家站在稍高/稍低的地面就会超出把手范围，
+                // 推行判定直接失效（实测抬高 0.85m 后距离 1.64m > reach 1.6m，车速归零）。
+                Vector3 a = motor.transform.position;
+                Vector3 b = transform.position;
+                a.y = 0f;
+                b.y = 0f;
+
+                if (Mathf.Abs(motor.transform.position.y - transform.position.y) > 2f)
+                {
+                    continue;
+                }
+
+                float d = Vector3.Distance(a, b);
                 if (d <= bestDistance)
                 {
                     bestDistance = d;

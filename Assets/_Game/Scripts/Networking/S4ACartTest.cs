@@ -5,6 +5,7 @@ using Mirror;
 using ScavengeNightmare.Cart;
 using ScavengeNightmare.Economy;
 using ScavengeNightmare.Gameplay;
+using ScavengeNightmare.Noise;
 using ScavengeNightmare.Save;
 using UnityEngine;
 
@@ -24,6 +25,7 @@ namespace ScavengeNightmare.Networking
         private bool enabledTest;
         private bool a4Mode;
         private bool a5Mode;
+        private bool noiseMode;
         private int failures;
 
         /// <summary>Night1 的楼梯：12 级 × 0.25m，顶部正好 3.00m（通向夹层）。</summary>
@@ -81,8 +83,9 @@ namespace ScavengeNightmare.Networking
             enabledTest = S4ACli.Has("-s4acart");
             a4Mode = S4ACli.Has("-s4acart-a4");
             a5Mode = S4ACli.Has("-s4acart-a5");
+            noiseMode = S4ACli.Has("-s4acart-noise");
 
-            if (!enabledTest && !a4Mode && !a5Mode)
+            if (!enabledTest && !a4Mode && !a5Mode && !noiseMode)
             {
                 this.enabled = false;
                 return;
@@ -129,7 +132,7 @@ namespace ScavengeNightmare.Networking
                 return;
             }
 
-            StartCoroutine(a4Mode ? RunA4() : (a5Mode ? RunA5() : Run()));
+            StartCoroutine(noiseMode ? RunNoise() : (a4Mode ? RunA4() : (a5Mode ? RunA5() : Run())));
         }
 
         private void Fail(string reason)
@@ -172,21 +175,20 @@ namespace ScavengeNightmare.Networking
 
             pool.Sort((a, b) => a.Mass.CompareTo(b.Mass));
 
+            // 技术计划 CD2 明确是「2 件轻货 + 1 件 42kg 雕像」，不是随便挑最重的。
+            // 之前挑到 60kg 保险箱：60:1 的质量比会让 1kg 玻璃在接触求解时被弹飞，
+            // 表现为「三件都显示装上了，一推车掉一件」。按规格回到 42kg。
             List<GrabbableProp> targets = new();
+
             for (int i = 0; i < pool.Count && targets.Count < 2; i++)
             {
-                targets.Add(pool[i]);
-            }
-
-            // 再来一件真正重的：只装轻件测不出「推车存在的意义」（P0 §2.1 保险箱 60kg 是硬证明）
-            for (int i = pool.Count - 1; i >= 0; i--)
-            {
-                if (pool[i].Mass >= 20f && !targets.Contains(pool[i]))
+                if (pool[i].Mass <= 5f)
                 {
                     targets.Add(pool[i]);
-                    break;
                 }
             }
+
+            TryPickByMass(pool, targets, 42f, 6f);
 
             Debug.Log($"[S4A] S4A_CART_TARGETS count={targets.Count} masses={(targets.Count > 0 ? JoinMasses(targets) : "-")}");
 
@@ -249,6 +251,14 @@ namespace ScavengeNightmare.Networking
             Debug.Log($"[S4A] GATE_CART count={cart.ItemCount} mass={cart.LoadKg:F1} ids={cart.Cargo.IdsJoined()}");
 
             // ---- 推行 8m：核心是「货还在不在板上」 ----
+            // 推行改到专用跑道上做：在店内地面上推会随机撞货架与门框，
+            // 同一份代码实测有时 8.8m、有时 0.24m——那测的是寻路，不是推车物理。
+            a4Track = SpawnTrack();
+            yield return new WaitForSeconds(0.3f);
+
+            cart.TeleportWithCargo(new Vector3(0f, 20.1f, 15f));
+            yield return new WaitForSeconds(0.8f);
+
             float pushed = 0f;
             yield return PushDistance(motor, cart, 8f, value => pushed = value);
 
@@ -296,6 +306,99 @@ namespace ScavengeNightmare.Networking
         }
 
         // ==================== A4 / A5 用例 ====================
+
+        /// <summary>
+        /// 噪音三档单调性 + 记忆模型（技术计划 CD8）。
+        /// 三档必须递增：否则「推得越快越吵」不成立，4B 的追猎压力根本调不出来。
+        /// 记忆模型照 zombie-ai 的 NPCSensoryMemory 验收：同来源窗口内刷新而非追加、按 age 遗忘。
+        /// </summary>
+        private IEnumerator RunNoise()
+        {
+            yield return Boot();
+
+            if (failures > 0)
+            {
+                Debug.LogError($"[S4A] S4A_CART_NOISE_FAIL phase=boot failures={failures}");
+                Application.Quit(1);
+                yield break;
+            }
+
+            CartProfile profile = fCart.Profile;
+
+            float nSlow = profile.NoiseAtSpeed(profile.speedSlow);
+            float nMid = profile.NoiseAtSpeed(profile.speedMid);
+            float nFast = profile.NoiseAtSpeed(profile.speedFast);
+
+            bool monotonic = nSlow > 0f && nMid > nSlow && nFast > nMid;
+            Debug.Log($"[S4A] S4A_CART_NOISE slow={nSlow:F1}@0.5 mid={nMid:F1}@1.5 fast={nFast:F1}@3.0 monotonic={monotonic}");
+
+            if (!monotonic)
+            {
+                Fail($"noise_not_monotonic slow={nSlow:F1} mid={nMid:F1} fast={nFast:F1}");
+            }
+
+            if (NoiseBus.AttributionWindowSeconds != 6f)
+            {
+                Fail($"noise_window_not_6s actual={NoiseBus.AttributionWindowSeconds}");
+            }
+
+            // 累积、归因与衰减
+            NoiseBus.Reset();
+            NoiseBus.Report("test_source", 30f, new Vector3(1f, 0f, 2f));
+
+            float afterAdd = NoiseBus.Level;
+            string attributed = NoiseBus.TopSource;
+
+            NoiseBus.Decay(1f);
+            float afterDecay = NoiseBus.Level;
+
+            Debug.Log($"[S4A] S4A_CART_NOISE_BUS add={afterAdd:F1} afterDecay={afterDecay:F1} top={attributed} memories={NoiseBus.Memories.Count}");
+
+            if (!(afterAdd > 0f && afterDecay < afterAdd))
+            {
+                Fail($"noise_decay_not_working add={afterAdd:F1} decayed={afterDecay:F1}");
+            }
+
+            if (!string.Equals(attributed, "test_source", System.StringComparison.Ordinal))
+            {
+                Fail($"noise_attribution_lost top={attributed}");
+            }
+
+            // 同一来源在窗口内应刷新，不能堆成两条记忆
+            NoiseBus.Report("test_source", 10f, new Vector3(1f, 0f, 2f));
+            int count = 0;
+            foreach (NoiseMemory memory in NoiseBus.Memories)
+            {
+                if (memory != null && string.Equals(memory.source, "test_source", System.StringComparison.Ordinal))
+                {
+                    count++;
+                }
+            }
+
+            if (count != 1)
+            {
+                Fail($"noise_memory_not_refreshed count={count}");
+            }
+
+            NoiseBus.ForgetOlderThan(-1f);
+            if (NoiseBus.Memories.Count != 0)
+            {
+                Fail($"noise_memory_forget_failed remaining={NoiseBus.Memories.Count}");
+            }
+
+            NoiseBus.Reset();
+
+            bool clean = failures == 0;
+            Debug.Log($"[S4A] S4A_CART_NOISE_OK monotonic={monotonic} refresh=1 forget=ok ok={clean}");
+
+            if (!clean)
+            {
+                Debug.LogError($"[S4A] S4A_CART_NOISE_FAIL failures={failures}");
+            }
+
+            yield return new WaitForSeconds(0.2f);
+            Application.Quit(clean ? 0 : 1);
+        }
 
         private PlayerMotor fMotor;
         private GrabController fGrab;
@@ -359,6 +462,19 @@ namespace ScavengeNightmare.Networking
             }
         }
 
+        /// <summary>
+        /// 4A 测试专用跑道：地图上方 20m 处铺一条 8×44m 地板，避开店内货架、门框与货堆。
+        /// 在真实地面上推行，测出来的是寻路而不是推车物理。
+        /// </summary>
+        private static GameObject SpawnTrack()
+        {
+            GameObject track = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            track.name = "S4A_Track";
+            track.transform.position = new Vector3(0f, 19.75f, 0f);
+            track.transform.localScale = new Vector3(8f, 0.5f, 44f);
+            return track;
+        }
+
         private IEnumerator LoadSequence(List<GrabbableProp> targets)
         {
             foreach (GrabbableProp prop in targets)
@@ -405,6 +521,9 @@ namespace ScavengeNightmare.Networking
 
                 int before = fCart.ItemCount;
                 yield return LoadOntoCart(fMotor, fGrab, fCart, prop);
+
+                // 装完多等一会：大件落地的冲击会把刚装好的轻件弹出去
+                yield return new WaitForSeconds(0.7f);
 
                 if (fCart.ItemCount <= before)
                 {
@@ -470,11 +589,7 @@ namespace ScavengeNightmare.Networking
             // 在地图上方 20m 铺一条 4×40m 的地板，避开店内货架、门框与货堆。
             // 从车出生点直接往 -z 推会被门框挡住（实测每次都卡在同一处、推 0.07m），
             // 那测的是寻路而不是推车物理。4A 要的是「满载 114kg 连续推 30m 掉不掉货」。
-            GameObject track = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            track.name = "S4A_A4_Track";
-            track.transform.position = new Vector3(0f, 19.75f, 0f);
-            track.transform.localScale = new Vector3(4f, 0.5f, 40f);
-            a4Track = track;
+            a4Track = SpawnTrack();
 
             yield return new WaitForSeconds(0.3f);
 
@@ -588,9 +703,24 @@ namespace ScavengeNightmare.Networking
 
             List<GrabbableProp> pool = CollectProps();
             List<GrabbableProp> seed = new();
+
+            // 只挑小件：A5 验收的是「折叠 → 抱车 → 爬楼梯」，不是装载容量。
+            // 放 42kg 雕像（0.89m 宽）会被 deck_full 拒，把 A5 的结论搅浑。
             for (int i = 0; i < pool.Count && seed.Count < 3; i++)
             {
+                Collider c = pool[i].GetComponent<Collider>();
+                float width = c != null ? Mathf.Max(c.bounds.size.x, c.bounds.size.z) : 0.4f;
+                if (width > 0.45f)
+                {
+                    continue;
+                }
+
                 seed.Add(pool[i]);
+            }
+
+            if (seed.Count == 0)
+            {
+                Fail("a5_no_small_props");
             }
 
             yield return LoadSequence(seed);
@@ -842,11 +972,12 @@ namespace ScavengeNightmare.Networking
                 yield break;
             }
 
-            // 站到车正后方并朝向车：推行是靠「玩家前方 handleDistance」驱动的
-            Vector3 behind = cart.transform.position - cart.transform.forward * 1.4f;
-            behind.y = 1.05f;
+            // 站位用固定的世界方向（-z），不依赖车当前朝向：
+            // 车的朝向由 spawn 锚点决定，用它反推「车后」会得到不同方向，结果不可复现。
+            Vector3 behind = rb.position + new Vector3(0f, 0f, 1.4f);
+            behind.y = rb.position.y + 0.35f;
             Teleport(motor.transform, behind);
-            motor.transform.LookAt(new Vector3(cart.transform.position.x, 1.05f, cart.transform.position.z));
+            motor.transform.LookAt(new Vector3(rb.position.x, behind.y, rb.position.z - 2f));
 
             yield return new WaitForSeconds(0.4f);
 
