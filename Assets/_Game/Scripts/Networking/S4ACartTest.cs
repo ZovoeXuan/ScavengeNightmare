@@ -676,8 +676,48 @@ namespace ScavengeNightmare.Networking
             S4AInput.AutoGrab = true;
             fMotor.ApplyAutomationMove(new Vector2(0f, 1f), false);
 
+            // 自愈：跑道刚生成、车刚落地的那几帧物理还没稳定，直接开推会被吃掉
+            // （实测出现过「推了 0.55m 就再也不动」，而装货、抓取全部正常）。
+            // 这里不用「再多等几秒」——等待只能降低概率还拖慢用例；
+            // 改成「2 秒内没挪动 0.3m 就重新摆到车后再推」，最多 2 次。
+            int pushRetries = 0;
+            float watchAt = Time.unscaledTime;
+            float pushedAtWatch = 0f;
+
             while (pushed < 30f && Time.unscaledTime - startedAt < 200f)
             {
+                if (Time.unscaledTime - watchAt >= 2f)
+                {
+                    float gained = pushed - pushedAtWatch;
+                    watchAt = Time.unscaledTime;
+                    pushedAtWatch = pushed;
+
+                    if (gained < 0.3f && pushed < 30f)
+                    {
+                        pushRetries++;
+
+                        if (pushRetries > 2)
+                        {
+                            Fail($"a4_push_stuck_no_progress pushed={pushed:F2} retries={pushRetries}");
+                            break;
+                        }
+
+                        Vector3 cartPos = fCart.transform.position;
+                        Vector3 reseat = new(cartPos.x, cartPos.y + 0.2f, cartPos.z + 1.4f);
+                        Teleport(fMotor.transform, reseat);
+                        fMotor.transform.LookAt(new Vector3(cartPos.x, reseat.y, cartPos.z - 2f));
+                        fMotor.ApplyAutomationMove(new Vector2(0f, 1f), false);
+                        S4AInput.AutoGrab = true;
+                        last = fCart.transform.position;
+
+                        Debug.Log($"[S4A] S4A_A4_PUSH_RETRY n={pushRetries} pushed={pushed:F2} at=({cartPos.x:F1},{cartPos.z:F1})");
+                        yield return new WaitForSeconds(0.6f);
+                        watchAt = Time.unscaledTime;
+                        pushedAtWatch = pushed;
+                        continue;
+                    }
+                }
+
                 if (fCart.Stalled)
                 {
                     stallCount++;
