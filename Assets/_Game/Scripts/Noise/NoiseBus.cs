@@ -20,6 +20,27 @@ namespace ScavengeNightmare.Noise
         public float Age => Time.unscaledTime - lastHeard;
     }
 
+    /// <summary>4B：一次听觉查询的结果，带监听者到声源的距离与衰减。</summary>
+    public readonly struct AudibleNoise
+    {
+        public static readonly AudibleNoise None = new(null, 0f, 0f);
+
+        public readonly NoiseMemory Memory;
+        public readonly float Distance;
+        public readonly float Attenuation;
+
+        public AudibleNoise(NoiseMemory memory, float distance, float attenuation)
+        {
+            Memory = memory;
+            Distance = distance;
+            Attenuation = attenuation;
+        }
+
+        public bool HasSource => Memory != null;
+        public string Source => Memory != null ? Memory.source : "none";
+        public Vector3 Position => Memory != null ? Memory.position : Vector3.zero;
+    }
+
     /// <summary>
     /// P0 噪音总线（design §2.4）：全队共享 0–100，服务器权威，自然衰减 3/s。
     /// 区间：0–39 安静 / 40–69 警觉 / 70–99 追猎 / 100 一次爆发后回落。
@@ -55,6 +76,75 @@ namespace ScavengeNightmare.Noise
 
         public static string TopSource => TopMemory != null ? TopMemory.source : "none";
         public static Vector3 TopSourcePosition => TopMemory != null ? TopMemory.position : default;
+
+        /// <summary>
+        /// 4B §4.2：怪物本地听觉半径。全局等级只决定「听多远」，
+        /// **不决定**「哪只怪去追」——必须有本地可听的记忆才进 Chase（A9）。
+        /// </summary>
+        public static float HearingRadiusForLevel(float value)
+        {
+            if (value >= HuntLevel)
+            {
+                return 16f;
+            }
+
+            return value >= AlertLevel ? 10f : 4f;
+        }
+
+        public static string ZoneForLevel(float value)
+        {
+            if (value >= MaxLevel)
+            {
+                return "burst";
+            }
+
+            return value >= HuntLevel ? "hunt" : (value >= AlertLevel ? "alert" : "quiet");
+        }
+
+        /// <summary>
+        /// 4B：以监听者为原点的听觉查询。attenuation = 1 - distance/radius，
+        /// 低于 0.2 视为听不到。返回窗口内 score 最高的可听记忆。
+        /// 这层距离衰减必须放在消费方（怪物）侧，否则全局 70 会让全图怪同时扑向一个声源。
+        /// </summary>
+        public static AudibleNoise AudibleAt(Vector3 listener, float radius)
+        {
+            if (radius <= 0f)
+            {
+                return AudibleNoise.None;
+            }
+
+            NoiseMemory best = null;
+            float bestDistance = 0f;
+            float bestAttenuation = 0f;
+
+            foreach (NoiseMemory memory in memories)
+            {
+                if (memory == null)
+                {
+                    continue;
+                }
+
+                Vector3 delta = memory.position - listener;
+                float distance = new Vector2(delta.x, delta.z).magnitude;
+                float attenuation = 1f - distance / radius;
+
+                if (attenuation < 0.2f)
+                {
+                    continue;
+                }
+
+                if (best == null || memory.score > best.score)
+                {
+                    best = memory;
+                    bestDistance = distance;
+                    bestAttenuation = attenuation;
+                }
+            }
+
+            return best != null
+                ? new AudibleNoise(best, bestDistance, bestAttenuation)
+                : AudibleNoise.None;
+        }
 
         public static void Report(string source, float amount, Vector3 at)
         {

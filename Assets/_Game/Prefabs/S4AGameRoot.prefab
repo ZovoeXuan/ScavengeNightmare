@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 2343795296020192952}
   - component: {fileID: 8891721090500415767}
   - component: {fileID: 1307998338810810574}
+  - component: {fileID: 8371700195245950480}
   m_Layer: 0
   m_Name: S4AGameRoot
   m_TagString: Untagged
@@ -67,6 +68,7 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  SkipNextBalanceHook: 0
 --- !u!114 &1307998338810810574
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -79,3 +81,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2dcdf1b1176efa14bae014f9b5f012a5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Save.P0SaveService
+--- !u!114 &8371700195245950480
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1906162122715408168}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7d340a730c7cdaf428bb40471375efa9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Noise.NoiseNetworkState
+  syncMethod: 0
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0

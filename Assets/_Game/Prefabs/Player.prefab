@@ -25,6 +25,7 @@ GameObject:
   - component: {fileID: -6980959049671728221}
   - component: {fileID: -2829821758322515974}
   - component: {fileID: 9056260333732735836}
+  - component: {fileID: 1445069349277049365}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -346,6 +347,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 663a37e035400c44399b0c7ab1f87cf2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.UI.RevivePrompt
+--- !u!114 &1445069349277049365
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 695582084772269870}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f81e23b2e895287409c5b1c39f505edd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.UI.NoiseHud
 --- !u!1 &2376511499117349623
 GameObject:
   m_ObjectHideFlags: 0

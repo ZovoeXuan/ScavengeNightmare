@@ -412,8 +412,17 @@ namespace ScavengeNightmare.Cart
                 bool pressed = held && !prev;
                 holdPrev[motor] = held;
 
-                float dist = Vector3.Distance(motor.transform.position, transform.position);
-                bool inReach = dist <= interactReach;
+                // 与 FindPusher 同口径：装货/折叠只算水平距离。
+                // 之前用 3D 距离，玩家胶囊中心比车高约 1m，垂直差直接吃掉 1.0m 的水平余量：
+                // 站在车后 1m（视觉上贴着车）实测 3D 距离 1.41m，卸货把玩家挤开 0.4m 就变成 1.82m > reach 1.8m，
+                // 折叠被拒（-s4acart-narrow 实测 narrow_fold_failed）。垂直差只用 2m 闸门挡住楼上楼下。
+                Vector3 a = motor.transform.position;
+                Vector3 b = transform.position;
+                a.y = 0f;
+                b.y = 0f;
+                float dist = Vector3.Distance(a, b);
+                bool inReach = dist <= interactReach
+                               && Mathf.Abs(motor.transform.position.y - transform.position.y) <= 2f;
 
                 if (held)
                 {

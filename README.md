@@ -2,11 +2,11 @@
 
 1-4 人合作物理拾荒微恐喜剧，Steam PC 买断制。一局 10-20 分钟：进图 → 拾荒 → 被追 → 撤离 → 结算。
 
-> 当前状态：**Sprint 4B · Story 1 完成**（2026-10-30）：玩家 HP / 单次伤害保护 / 倒地 / 自救 / 队友救援 / 团灭；商店补自救针与急救包（6/8）。`S4B_VALIDATE_OK`，`-s4bvitals` / `-s4bwipe` / `-s4bdownhost`+`-s4bdownclient` 全绿，4A 回归 13/13。
+> 当前状态：**Sprint 4B · Story 2 完成**（2026-10-30）：噪音消费（本地听觉 4/10/16m）+ 空眼怪物（七状态 / 追逐预算 / 手电僵直 / 推车击退 / 楼梯 / 卡住脱困）。`S4B_VALIDATE_OK`，`-s4bnoise` / `-s4bmon` 全绿，4A 回归 13/13。
 >
-> 里程碑：D1–D13 ✓ / Sprint 4A（13/13）✓ / Sprint 4B-1 生存链 ✓
+> 里程碑：D1–D13 ✓ / Sprint 4A（13/13）✓ / Sprint 4B-1 生存链 ✓ / Sprint 4B-2 噪音+空眼 ✓
 >
-> **下一步**：S4B-2 噪音消费 + 空眼怪物（`NoiseBus.AudibleAt`、`NoiseHUD`、七状态、追逐预算）。详见 `Docs/Sprint_4B_TechnicalPlan.md` 与 `Docs/Sprint_4B_DevLog.md`。
+> **下一步**：S4B-3 塑料导购视线冻结 + 尖啸罐提前引爆。详见 `Docs/Sprint_4B_TechnicalPlan.md` 与 `Docs/Sprint_4B_DevLog.md`。
 
 ## 引擎与版本
 

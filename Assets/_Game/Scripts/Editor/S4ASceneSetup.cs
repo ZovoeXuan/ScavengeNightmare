@@ -410,7 +410,7 @@ namespace ScavengeNightmare.EditorTools
             return item;
         }
 
-        private static void EnsureFolder(string path)
+        internal static void EnsureFolder(string path)
         {
             if (AssetDatabase.IsValidFolder(path))
             {
@@ -814,7 +814,7 @@ namespace ScavengeNightmare.EditorTools
             EditorUtility.SetDirty(host);
         }
 
-        private static void RegisterPrefab(Scene scene, GameObject prefab)
+        internal static void RegisterPrefab(Scene scene, GameObject prefab)
         {
             NetworkManager[] managers = UnityEngine.Object.FindObjectsByType<NetworkManager>(FindObjectsSortMode.None);
             if (managers.Length == 0 || prefab == null)
