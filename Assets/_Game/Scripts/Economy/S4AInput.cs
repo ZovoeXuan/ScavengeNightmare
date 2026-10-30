@@ -118,6 +118,26 @@ namespace ScavengeNightmare.Economy
                     return 4;
                 }
 
+                if (keyboard.digit5Key.wasPressedThisFrame)
+                {
+                    return 5;
+                }
+
+                if (keyboard.digit6Key.wasPressedThisFrame)
+                {
+                    return 6;
+                }
+
+                if (keyboard.digit7Key.wasPressedThisFrame)
+                {
+                    return 7;
+                }
+
+                if (keyboard.digit8Key.wasPressedThisFrame)
+                {
+                    return 8;
+                }
+
                 return 0;
 #else
                 if (Input.GetKeyDown(KeyCode.Alpha1))
@@ -138,6 +158,26 @@ namespace ScavengeNightmare.Economy
                 if (Input.GetKeyDown(KeyCode.Alpha4))
                 {
                     return 4;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Alpha5))
+                {
+                    return 5;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Alpha6))
+                {
+                    return 6;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Alpha7))
+                {
+                    return 7;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Alpha8))
+                {
+                    return 8;
                 }
 
                 return 0;

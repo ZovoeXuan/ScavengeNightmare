@@ -376,12 +376,12 @@
    - 第二次倒地且无针 → 3s 后 `GATE_WIPE`。
 2. `-s4bdown` 双人：client 倒地 → host 在 2m 内长按 E 4s → client 起身 50 HP；中途松手/走开 2.5m → 进度清零并打 `GATE_REVIVE_REJECT reason=interrupted`。
 3. `-s4bwipe`：盘上余额写入前 `b0`，团灭后重启读盘 `b1`，`b1==b0`；`legIndex=1`、`progress=0`、`cargoDestroyed>0`；`GATE_WIPE` 字段齐全。
-4. `-s4bshop8`：8 件全上架；`self_injector` 购买后倒地自救次数 +1；`medkit` 对队友 40→100、对自己被拒 `reason=self_target`；余额与盘一致。
+4. 商店生存件：`self_injector` 购买后倒地自救次数 +1 并能真的消耗；`medkit` 对队友 40→100、对自己被拒 `reason=self_target`；余额与盘一致。**8 件全上架与 `-s4bshop8` 归 S4B-5**（工具带/体能属于 S4B-5 的系统）。
 5. 回归：4A 13 条全绿（`mode=legacy4a`）。
 
-**测试钩子**：`-s4bvitals` / `-s4bdown` / `-s4bwipe` / `-s4bshop8`
+**测试钩子**：`-s4bvitals` / `-s4bdownhost` + `-s4bdownclient` / `-s4bwipe`
 
-**关键决策**：倒地不减少结算资格（P0 §5.2）；免费自救针是系统基线，不是商品；消耗品按玩家计数，不占 `ownedMask`。
+**关键决策**：倒地不减少结算资格（P0 §5.2）；免费自救针是系统基线，不是商品；消耗品按**队伍库存**计数（`TeamAccount` 的 SyncVar），不占 `ownedMask`。
 
 **风险**：HP 与 D6「被砸硬直」两套受伤逻辑叠加 —— 硬直只顿一下，不扣 HP；只有怪物攻击/尖啸罐扣 HP。两者必须分开记日志（`D6_STUN` vs `GATE_DAMAGE`）。
 

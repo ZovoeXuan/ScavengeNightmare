@@ -52,6 +52,10 @@ namespace ScavengeNightmare.Networking
         private float externalSpeedCap = -1f;
         private float carryMassKg;
         private float stunUntil;
+
+        /// <summary>4B：倒地状态。倒地时仍可爬，但禁止冲刺/跳跃，速度由 vitalsSpeedCap 钳制。</summary>
+        private bool vitalsDowned;
+        private float vitalsSpeedCap = -1f;
         private Traits.PlayerTraits traits;
         private Gameplay.GrabController grab;
 
@@ -225,6 +229,14 @@ namespace ScavengeNightmare.Networking
 
             SyncCarryMassFromHands();
             ReadInput();
+
+            // 倒地后仍允许爬行与转视角，但冲刺和跳跃必须关掉。
+            if (vitalsDowned)
+            {
+                sprintHeld = false;
+                jumpQueued = false;
+            }
+
             ApplyLook();
             ApplyMove();
         }
@@ -391,6 +403,13 @@ namespace ScavengeNightmare.Networking
                 ReportCarryCapOnce(carryCap);
             }
 
+            // 4B：倒地爬行上限。放在所有商品/身份倍率之后，是最后一道裁决，
+            // 不允许任何构筑把倒地的人推得比 0.8m/s 更快。
+            if (vitalsSpeedCap >= 0f && speed > vitalsSpeedCap)
+            {
+                speed = vitalsSpeedCap;
+            }
+
             planarVelocity = Vector3.MoveTowards(planarVelocity, desired * speed, acceleration * Time.deltaTime);
 
             if (controller.isGrounded)
@@ -469,6 +488,20 @@ namespace ScavengeNightmare.Networking
         {
             externalSpeedCap = capMetersPerSecond;
         }
+
+        /// <summary>4B：倒地状态（客户端由 PlayerVitals 的 SyncVar 钩子驱动）。</summary>
+        public void SetVitalsDowned(bool value)
+        {
+            vitalsDowned = value;
+        }
+
+        /// <summary>4B：倒地爬行速度上限。传负数解除限制。</summary>
+        public void SetVitalsSpeedCap(float capMetersPerSecond)
+        {
+            vitalsSpeedCap = capMetersPerSecond;
+        }
+
+        public bool VitalsDowned => vitalsDowned;
 
         /// <summary>D8 交互距离倍率：近视眼看得近。</summary>
         public float InteractRangeScale => Loadout.InteractRangeScale;

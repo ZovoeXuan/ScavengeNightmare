@@ -17,6 +17,7 @@ MonoBehaviour:
   description: "\u8D1F\u91CD\u6027\u80FD +15%\uFF1A\u8D1F\u91CD\u51CF\u901F\u91CF\u4E0E\u8D1F\u91CD\u786C\u4E0A\u9650\u540C\u65F6\u63D0\u9AD8"
   price: 900
   maxOwned: 1
+  consumable: 0
   effect: 4
   magnitude: 1.15
   hotkey: 4

@@ -70,22 +70,28 @@ namespace ScavengeNightmare.Economy
                 return;
             }
 
+            // 首次进入场景不算「换关」：S4ABootstrap 与 PropSpawner 已经在 Start 里
+            // 各生成过一次，这里再调 EnsureSceneObjects 会把货刷成两份（实测 32 件）。
+            bool firstScene = string.IsNullOrEmpty(lastScene);
             lastScene = now;
-            Debug.Log($"[S4A] S4A_ROUTE_SCENE name={now} safehouse={InSafehouse}");
-            StartCoroutine(AfterSceneChanged(now));
+            Debug.Log($"[S4A] S4A_ROUTE_SCENE name={now} safehouse={InSafehouse} first={firstScene}");
+            StartCoroutine(AfterSceneChanged(now, firstScene));
         }
 
-        private IEnumerator AfterSceneChanged(string sceneName)
+        private IEnumerator AfterSceneChanged(string sceneName, bool firstScene)
         {
             // 等 Mirror 把玩家、场景对象都重建完。这个延迟不是「保险」——
             // 实测 0.2s 时玩家还没 OnStartServer，挪位置会被随后的一次重建覆盖掉。
             yield return new WaitForSeconds(0.6f);
 
-            MovePlayersToAnchor();
+            if (!firstScene)
+            {
+                MovePlayersToAnchor();
 
-            NetworkManager manager = NetworkManager.singleton;
-            S4ABootstrap boot = manager != null ? manager.GetComponent<S4ABootstrap>() : null;
-            boot?.EnsureSceneObjects();
+                NetworkManager manager = NetworkManager.singleton;
+                S4ABootstrap boot = manager != null ? manager.GetComponent<S4ABootstrap>() : null;
+                boot?.EnsureSceneObjects();
+            }
 
             TeamAccount account = TeamAccount.Instance;
             if (account == null)

@@ -358,3 +358,10 @@
      漏删一个就是「安全屋里也能刷货」这种没人会发现的问题。
 - **已知资产待修**：`vase` 的 BoxCollider 是占位尺寸（板面布局实测 width=0.00，会和其他货叠到同一坐标），
   推行时必掉。已在 `-s4acart` 候选池里挡掉并注明，属资产修复项，不是推车逻辑问题。
+
+## Sprint 4B · Story 1 · 玩家生存：HP / 倒地 / 救援 / 团灭（2026-10-30）
+
+- **做了什么**：新增 `Combat/PlayerVitals`（HP/单次伤害保护/倒地/自救/救援）、`ReviveInteractor`（2.5m 长按 E 4s）、`TeamWipeDetector`（全队倒地 → 3s/10s 宽限 → 本趟结束）、`S4BInput`、`DownedHud`、`RevivePrompt`；`PlayerMotor` 增加倒地限速 0.8m/s 与禁冲刺/跳跃；`GrabController` 倒地禁抓；`TeamAccount` 增加 `ServerEndRun`（余额保留、leg 回 1、runId 换新）与自救针/急救包库存；商店补 `self_injector` 120 / `medkit` 200（共 6 件）。
+- **验收**：`S4B_VALIDATE_OK vitals=1 revive=1 wipe=1 downedHud=1 shop6=1 tests=3`；`-s4bvitals` / `-s4bwipe` / `-s4bdownhost`+`-s4bdownclient` 全绿；4A 回归 `13/13`。
+- **顺手修掉三个真 bug**：① 首场景 `LevelRouteService` 重复调 `EnsureSceneObjects`，Night1 刷出 32 件货（团灭日志 `cargoDestroyed=33`），改首场景跳过后恢复 16 件 / 17 个销毁对象；② 安全屋被 `EnsureSceneObjects` / `PropSpawner` 回退刷出 11 件货和一辆车，已加 Safehouse 守卫；③ `GrabController.inputEnabled` 被当成抓取闸门，打挂 `s4adeposit` / `s4acarrycap` 两条回归，改为只判 `PlayerVitals.IsDowned`。
+- **遗留**：S4B-2 噪音+空眼；`medkit` 双人治疗断言未做；A8 团灭已补齐为 4/4，报告措辞待 S4B-5 统一更新。

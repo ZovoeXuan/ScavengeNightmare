@@ -18,6 +18,7 @@ MonoBehaviour:
     \xD72"
   price: 500
   maxOwned: 1
+  consumable: 0
   effect: 2
   magnitude: 2
   hotkey: 2

@@ -314,7 +314,8 @@ namespace ScavengeNightmare.EditorTools
         private const string ShopCatalogPath = "Assets/_Game/Resources/ShopCatalog.asset";
 
         /// <summary>
-        /// 商店：4 件 4A 商品 + 目录资源 + 场景里的终端与 HUD。
+        /// 商店：4 件 4A 商品 + 自救针/急救包 + 目录资源 + 场景里的终端与 HUD。
+        /// 目录顺序只许追加：ownedMask 的位序依赖它。
         /// 目录放 Resources 是有意的——账本是 DontDestroyOnLoad 的 GameRoot，换关后场景引用会丢，
         /// Resources 加载不受换关影响。
         /// </summary>
@@ -329,7 +330,9 @@ namespace ScavengeNightmare.EditorTools
                 EnsureShopItem("grip_gloves", "防滑手套", "抓握更牢：脱手阈值 ×1.5，跟随更快", 400, ShopEffect.GrabBreak, 1.5f, 1),
                 EnsureShopItem("packing_tape", "打包胶带", "把货捆在板上：横向滑移阈值 ×2", 500, ShopEffect.CartSlip, 2f, 2),
                 EnsureShopItem("flashlight", "手电筒", "F 键开关，射程 18m", 350, ShopEffect.Flashlight, 18f, 3),
-                EnsureShopItem("grip_training", "握力训练", "负重性能 +15%：负重减速量与负重硬上限同时提高", 900, ShopEffect.CarryPenalty, 1.15f, 4)
+                EnsureShopItem("grip_training", "握力训练", "负重性能 +15%：负重减速量与负重硬上限同时提高", 900, ShopEffect.CarryPenalty, 1.15f, 4),
+                EnsureShopItem("self_injector", "自救针", "倒地 8s 后可自救一次；每关最多买 1 支", 120, ShopEffect.SelfInjector, 1f, 5, true),
+                EnsureShopItem("medkit", "急救包", "对队友回复 60 HP（3s）；对自己无效", 200, ShopEffect.Medkit, 60f, 6, true, 2)
             };
 
             ShopCatalog catalog = AssetDatabase.LoadAssetAtPath<ShopCatalog>(ShopCatalogPath);
@@ -382,7 +385,8 @@ namespace ScavengeNightmare.EditorTools
             EditorUtility.SetDirty(go);
         }
 
-        private static ShopItem EnsureShopItem(string id, string display, string desc, int price, ShopEffect effect, float magnitude, int hotkey)        {
+        private static ShopItem EnsureShopItem(string id, string display, string desc, int price, ShopEffect effect, float magnitude, int hotkey, bool consumable = false, int maxOwned = 1)
+        {
             string path = $"{ShopItemDir}/{id}.asset";
             ShopItem item = AssetDatabase.LoadAssetAtPath<ShopItem>(path);
 
@@ -396,7 +400,8 @@ namespace ScavengeNightmare.EditorTools
             item.displayName = display;
             item.description = desc;
             item.price = price;
-            item.maxOwned = 1;
+            item.maxOwned = maxOwned;
+            item.consumable = consumable;
             item.effect = effect;
             item.magnitude = magnitude;
             item.hotkey = hotkey;

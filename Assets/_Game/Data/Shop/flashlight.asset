@@ -17,6 +17,7 @@ MonoBehaviour:
   description: "F \u952E\u5F00\u5173\uFF0C\u5C04\u7A0B 18m"
   price: 350
   maxOwned: 1
+  consumable: 0
   effect: 3
   magnitude: 18
   hotkey: 3

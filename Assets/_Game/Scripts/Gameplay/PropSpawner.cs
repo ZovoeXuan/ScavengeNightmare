@@ -67,6 +67,14 @@ namespace ScavengeNightmare.Gameplay
             spawned = true;
             yield return new WaitForSeconds(0.2f);
 
+            // 安全屋没有任何拾荒物。没有这层判断时，换关到 Safehouse 会因为没有锚点
+            // 回退到 entries，在店里刷出 11 件货（实测）。
+            if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Safehouse")
+            {
+                Debug.Log("[D65] D65_SPAWNED count=0 reason=safehouse");
+                yield break;
+            }
+
             // 场景里摆了 PropSpawnAnchor 就按锚点生成（D12 起的新图都走这条路）；
             // 没有锚点则回退到 entries 硬编码表，保证 Main 沙盒与全部既有用例不受影响。
             PropSpawnAnchor[] anchors = FindObjectsByType<PropSpawnAnchor>(FindObjectsSortMode.None);

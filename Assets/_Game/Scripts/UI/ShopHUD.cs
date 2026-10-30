@@ -45,8 +45,20 @@ namespace ScavengeNightmare.UI
                     continue;
                 }
 
-                bool owned = account.Owns(i);
-                string tag = owned ? "【已拥有】" : $"¥{item.price}";
+                string tag;
+
+                if (item.consumable)
+                {
+                    int charges = item.effect == ShopEffect.SelfInjector
+                        ? account.SelfInjectorCharges
+                        : (item.effect == ShopEffect.Medkit ? account.MedkitCharges : 0);
+                    tag = $"¥{item.price}　库存 {charges}";
+                }
+                else
+                {
+                    tag = account.Owns(i) ? "【已拥有】" : $"¥{item.price}";
+                }
+
                 GUILayout.Label($"{item.hotkey}. {item.displayName}  {tag}", rowStyle);
             }
 

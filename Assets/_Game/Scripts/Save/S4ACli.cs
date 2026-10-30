@@ -84,6 +84,7 @@ namespace ScavengeNightmare.Save
                     }
 
                     if (a.StartsWith("-s4a", StringComparison.OrdinalIgnoreCase)
+                        || a.StartsWith("-s4b", StringComparison.OrdinalIgnoreCase)
                         || a.StartsWith("-d4test", StringComparison.OrdinalIgnoreCase)
                         || a.StartsWith("-d6test", StringComparison.OrdinalIgnoreCase)
                         || a.StartsWith("-d8test", StringComparison.OrdinalIgnoreCase)
@@ -102,6 +103,27 @@ namespace ScavengeNightmare.Save
 
         private static bool testRun;
         private static bool testRunResolved;
+
+        /// <summary>
+        /// 是否是 4A 基线进程（只看 -s4a 前缀）。4B 的 P0 锚点口径要避开它：
+        /// -s4a* 用例必须拿到完整 16 件货（A4 需要 statue + safe），
+        /// 否则第 1 关只有 12 件、statue 不在场，A4 会当场失效。
+        /// </summary>
+        public static bool Is4ARun
+        {
+            get
+            {
+                foreach (string a in Environment.GetCommandLineArgs())
+                {
+                    if (a != null && a.StartsWith("-s4a", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
 
         public static string SaveDirOverride;
 

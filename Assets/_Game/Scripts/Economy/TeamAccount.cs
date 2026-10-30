@@ -68,6 +68,13 @@ namespace ScavengeNightmare.Economy
         /// <summary>本次进安全屋后已购买笔数（hard_cap 判据）。撤销不退计数，退了再买也算。</summary>
         [SyncVar] private int visitPurchases;
 
+        /// <summary>4B：队伍公共消耗品库存（自救针 / 急救包）。跨场景常驻，跨进程从 0 开始。</summary>
+        [SyncVar] private int selfInjectorCharges;
+        [SyncVar] private int medkitCharges;
+
+        /// <summary>本次 Visit 内每种消耗品买了几次（按 itemId 计数，撤销会减）。</summary>
+        private readonly Dictionary<string, int> visitConsumables = new();
+
         private readonly HashSet<string> committed = new();
         private bool warnedNoSave;
 
@@ -82,6 +89,9 @@ namespace ScavengeNightmare.Economy
         public int OwnedMask => ownedMask;
 
         public int VisitPurchases => visitPurchases;
+
+        public int SelfInjectorCharges => selfInjectorCharges;
+        public int MedkitCharges => medkitCharges;
 
         /// <summary>最近一笔购买 id。HUD 的「U 撤销」按它撤，玩家不用记 id。</summary>
         public string LastPurchaseId { get; private set; } = string.Empty;
@@ -434,9 +444,98 @@ namespace ScavengeNightmare.Economy
             legQuota = nextQuota;
             quotaReached = false;
             visitPurchases = 0;
+            visitConsumables.Clear();
             PurchaseWindowOpen = true;
             PurchaseWindowClosedAt = 0f;
             Debug.Log($"[S4A] GATE_LEVEL n={legIndex} quota={legQuota} source={source} before={balance} after={balance}");
+        }
+
+        /// <summary>
+        /// 4B 团灭：本趟结束，钱留下，关卡回到第 1 关。
+        ///
+        /// 顺序与入账一致：先 clone → 改 sav 字段 → TryCommitState 落盘 → 成功后才改内存。
+        /// 落盘失败就整笔返回 false，团灭检测器不会假装「已经回安全屋」。
+        /// </summary>
+        [Server]
+        public bool ServerEndRun(string reason)
+        {
+            int legBefore = legIndex;
+            long balanceBefore = balance;
+            int quota = LevelRouteService.Instance != null ? LevelRouteService.Instance.QuotaFor(1) : 1800;
+            int nextRunId = NewRunId();
+
+            P0SaveService save = P0SaveService.Instance;
+            if (save != null)
+            {
+                if (!save.Loaded)
+                {
+                    Debug.LogError($"[S4B] GATE_WIPE_FAIL reason=save_unavailable state={save.State} leg={legBefore}");
+                    return false;
+                }
+
+                TeamSaveData next = save.Data.Clone();
+                if (next == null)
+                {
+                    Debug.LogError($"[S4B] GATE_WIPE_FAIL reason=clone_failed leg={legBefore}");
+                    return false;
+                }
+
+                next.runId = nextRunId;
+                next.legIndex = 1;
+                next.legProgress = 0;
+                next.legQuota = quota;
+                next.quotaReached = false;
+                next.balance = balance;
+
+                if (!save.TryCommitState(next, "wipe", out string error))
+                {
+                    Debug.LogError($"[S4B] GATE_WIPE_FAIL reason={error} leg={legBefore}");
+                    return false;
+                }
+            }
+
+            runId = nextRunId;
+            legIndex = 1;
+            legProgress = 0;
+            legQuota = quota;
+            quotaReached = false;
+            visitPurchases = 0;
+            visitConsumables.Clear();
+            committed.Clear();
+            selfInjectorCharges = 0;
+            medkitCharges = 0;
+            LastPurchaseId = string.Empty;
+
+            Debug.Log($"[S4B] GATE_WIPE_STATE reason={reason} legBefore={legBefore} legAfter=1 balanceBefore={balanceBefore} balanceAfter={balance} runId={runId}");
+            return true;
+        }
+
+        /// <summary>服务端：消耗一支已购自救针。</summary>
+        [Server]
+        public bool TryUseSelfInjector()
+        {
+            if (selfInjectorCharges <= 0)
+            {
+                return false;
+            }
+
+            selfInjectorCharges--;
+            Debug.Log($"[S4B] GATE_INJECTOR_USE mode=bought remaining={selfInjectorCharges}");
+            return true;
+        }
+
+        /// <summary>服务端：消耗一个已购急救包。</summary>
+        [Server]
+        public bool TryUseMedkit()
+        {
+            if (medkitCharges <= 0)
+            {
+                return false;
+            }
+
+            medkitCharges--;
+            Debug.Log($"[S4B] GATE_MEDKIT_USE remaining={medkitCharges}");
+            return true;
         }
 
         // ==================== 商店（服务端权威） ====================
@@ -522,7 +621,18 @@ namespace ScavengeNightmare.Economy
                 return false;
             }
 
-            if (Owns(index))
+            int usedThisVisit = visitConsumables.TryGetValue(itemId, out int used) ? used : 0;
+
+            if (item.consumable)
+            {
+                // 消耗品不进 ownedMask（那是永久位），按「本次 Visit 上限」判。
+                if (usedThisVisit >= Mathf.Max(1, item.maxOwned))
+                {
+                    RejectBuy(itemId, "already_owned");
+                    return false;
+                }
+            }
+            else if (Owns(index))
             {
                 RejectBuy(itemId, "already_owned");
                 return false;
@@ -576,7 +686,24 @@ namespace ScavengeNightmare.Economy
                 return false;
             }
 
-            ownedMask |= 1 << index;
+            if (item.consumable)
+            {
+                visitConsumables[itemId] = usedThisVisit + 1;
+
+                if (item.effect == ShopEffect.SelfInjector)
+                {
+                    selfInjectorCharges++;
+                }
+                else if (item.effect == ShopEffect.Medkit)
+                {
+                    medkitCharges++;
+                }
+            }
+            else
+            {
+                ownedMask |= 1 << index;
+            }
+
             visitPurchases++;
             balance = newBalance;
             LastPurchaseId = purchaseId;
@@ -624,6 +751,31 @@ namespace ScavengeNightmare.Economy
                 return false;
             }
 
+            ShopCatalog catalog = ShopCatalog.Instance;
+            ShopItem item = catalog != null ? catalog.Find(target.itemId) : null;
+            bool consumable = item != null && item.consumable;
+
+            if (consumable)
+            {
+                int used = visitConsumables.TryGetValue(target.itemId, out int count) ? count : 0;
+                bool hasCharge = true;
+
+                if (item.effect == ShopEffect.SelfInjector)
+                {
+                    hasCharge = selfInjectorCharges > 0;
+                }
+                else if (item.effect == ShopEffect.Medkit)
+                {
+                    hasCharge = medkitCharges > 0;
+                }
+
+                if (used <= 0 || !hasCharge)
+                {
+                    Debug.Log($"[S4A] GATE_BUY_UNDO_REJECT purchaseId={purchaseId} state=active reason=already_used balance={balance}");
+                    return false;
+                }
+            }
+
             int refund = target.price;
             long newBalance = balance + refund;
 
@@ -664,10 +816,27 @@ namespace ScavengeNightmare.Economy
                 return false;
             }
 
-            int index = ShopCatalog.Instance != null ? ShopCatalog.Instance.IndexOf(target.itemId) : -1;
-            if (index >= 0)
+            if (consumable)
             {
-                ownedMask &= ~(1 << index);
+                int usedNow = visitConsumables.TryGetValue(target.itemId, out int count) ? count : 1;
+                visitConsumables[target.itemId] = Mathf.Max(0, usedNow - 1);
+
+                if (item.effect == ShopEffect.SelfInjector)
+                {
+                    selfInjectorCharges = Mathf.Max(0, selfInjectorCharges - 1);
+                }
+                else if (item.effect == ShopEffect.Medkit)
+                {
+                    medkitCharges = Mathf.Max(0, medkitCharges - 1);
+                }
+            }
+            else if (catalog != null)
+            {
+                int index = catalog.IndexOf(target.itemId);
+                if (index >= 0)
+                {
+                    ownedMask &= ~(1 << index);
+                }
             }
 
             balance = newBalance;

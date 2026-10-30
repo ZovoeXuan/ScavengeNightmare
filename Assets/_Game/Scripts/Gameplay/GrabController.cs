@@ -37,6 +37,7 @@ namespace ScavengeNightmare.Gameplay
         private GrabbableProp heldProp;
         private bool inputEnabled = true;
         private Traits.PlayerTraits traits;
+        private ScavengeNightmare.Combat.PlayerVitals vitals;
         private float shakePhase;
 
         /// <summary>Story 3：双手被占用（折叠抱车中）。默认 false。</summary>
@@ -75,6 +76,7 @@ namespace ScavengeNightmare.Gameplay
             }
 
             traits = GetComponent<Traits.PlayerTraits>();
+            vitals = GetComponent<ScavengeNightmare.Combat.PlayerVitals>();
         }
 
         private void OnDisable()
@@ -173,6 +175,15 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
+            // 4B：倒地的人不能抓货。只判 SyncVar，不判 inputEnabled——
+            // inputEnabled 是「本地是否读鼠标」的开关，4A/D4/D6 自动化用它防止自动脱手，
+            // 若拿它当抓取闸门，所有既有用例都会当场失效。
+            if (vitals != null && vitals.IsDowned)
+            {
+                Debug.Log("[S4B] S4A_GRAB_REJECT reason=downed");
+                return;
+            }
+
             // Story 3：抱车时双手被占，抓货必须被拒（A5 要求折叠抱车期间不能同时抓货）。
             // 默认 false，Main / Supermarket 的 D3–D13 行为一行不变。
             if (handsBusy)
@@ -246,6 +257,12 @@ namespace ScavengeNightmare.Gameplay
         {
             if (isHolding || prop == null || prop.Body == null)
             {
+                return;
+            }
+
+            if (vitals != null && vitals.IsDowned)
+            {
+                Debug.Log($"[S4B] S4A_GRAB_REJECT reason=downed netId={netId}");
                 return;
             }
 

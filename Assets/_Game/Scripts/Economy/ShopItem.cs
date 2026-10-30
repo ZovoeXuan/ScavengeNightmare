@@ -9,7 +9,9 @@ namespace ScavengeNightmare.Economy
         GrabBreak = 1,
         CartSlip = 2,
         Flashlight = 3,
-        CarryPenalty = 4
+        CarryPenalty = 4,
+        SelfInjector = 5,
+        Medkit = 6
     }
 
     /// <summary>
@@ -29,8 +31,11 @@ namespace ScavengeNightmare.Economy
 
         public int price = 400;
 
-        [Tooltip("同一局内最多拥有几件。P0 全是 1（唯一性商品）")]
+        [Tooltip("同一 Visit 内最多买几次。耐用品为 1；急救包为 2")]
         public int maxOwned = 1;
+
+        [Tooltip("消耗品：不进 ownedMask，按 Visit 上限买、按队伍库存消耗")]
+        public bool consumable;
 
         public ShopEffect effect = ShopEffect.None;
 

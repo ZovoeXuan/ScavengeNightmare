@@ -17,6 +17,7 @@ MonoBehaviour:
   description: "\u6293\u63E1\u66F4\u7262\uFF1A\u8131\u624B\u9608\u503C \xD71.5\uFF0C\u8DDF\u968F\u66F4\u5FEB"
   price: 400
   maxOwned: 1
+  consumable: 0
   effect: 1
   magnitude: 1.5
   hotkey: 1

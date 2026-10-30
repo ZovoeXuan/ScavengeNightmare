@@ -108,6 +108,14 @@ namespace ScavengeNightmare.Economy
         [Server]
         public void EnsureSceneObjects()
         {
+            // 安全屋不是夜路：不该有推车、也不该有可拾荒物。
+            // 早先这里无条件 SpawnCart + RespawnForNewScene，导致进店后场上多出一辆车和 11 件货。
+            if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Safehouse")
+            {
+                Debug.Log("[S4A] S4A_SCENE_OBJECTS_SKIP reason=safehouse");
+                return;
+            }
+
             SpawnCart();
 
             PropSpawner spawner = GetComponent<PropSpawner>();
