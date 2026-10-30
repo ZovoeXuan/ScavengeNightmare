@@ -334,3 +334,27 @@
   断言会全绿但什么都没验。探针改到远离公秤的门前再打。
 - **验收**：`S4A_CARRY_CAP_OK base=5.175 boosted=5.250 lightRatio=1.014 heavyBase=3.135
   heavyBoost=3.605 cap=3.135 flashlight=1 ok=True`；九条 4A 用例全绿（A4 30.03m / A5 3.00m / 商店 identity=1）。
+
+### Story 4 · 换关闭环（2026-10-30）
+
+- **新增**：`LevelRouteService`（挂 NM 物体，DDOL，靠场景名变化驱动重建）、`LevelPortal`（长按 1.2s +
+  过关额闸门）、`SceneEntryAnchor`（出生锚点）、`Safehouse.unity`（从零搭的封闭房间 + 商店 + 返回门）。
+  **刻意不写 NetworkManager 子类**：那要把三个场景的 NM 组件整体迁移，迁移失败＝联机配置全丢，
+  而真正需要 NM 钩子的只有「换关后玩家放哪」「换关后重刷物件」，用场景名轮询就能做完。
+- **修掉 `S4ABootstrap` 的历史 bug**：换关回来时 `TeamAccount.Instance != null` 走 `yield break`，
+  导致**第二天进关没有车、没有货**。抽出 `EnsureSceneObjects()` 作为重入入口，`PropSpawner` 加
+  `RespawnForNewScene()`（只增不改）。
+- **验收**：`S4A_LOOP_OK legs=2 balance=2700 dupBlocked=1 sync=match cart=True ok=True`
+  - 夜路→安全屋：钱包 2700 不丢、商店在、**安全屋没有推车**（有的话说明旧 NetworkObject 没清）
+  - `GATE_LEVEL n=2 quota=2632 source=table`，progress 归零，回到夜路推车与货都在
+  - `GATE_WALLET_SYNC server=2700 client=2700 match=True`
+  - `-s4asyncbreak`：`match=False`（探针自检；注入点必须在**所有换关之后**，
+    早注入会被换关时的初始状态重发覆盖掉，实测 dropped=2700 但最终仍 match=True）
+- **踩坑**：
+  1. 路由「把玩家挪到入口锚点」不能无条件做：用例刚把人站到店里，0.6s 后被拎回出生点，
+     一次打挂商店/推车/公秤三条用例。改成**只救还在原点的玩家**（这才是换关空表的真实故障表现）。
+  2. `-s4aloop` 也必须等路由摆位（1.8s）再传送到门前，否则前脚站到门上、后脚被拎走。
+  3. 安全屋场景从零搭而不是复制夜路再删——复制会把货架、推车锚点、公秤全带过来，
+     漏删一个就是「安全屋里也能刷货」这种没人会发现的问题。
+- **已知资产待修**：`vase` 的 BoxCollider 是占位尺寸（板面布局实测 width=0.00，会和其他货叠到同一坐标），
+  推行时必掉。已在 `-s4acart` 候选池里挡掉并注明，属资产修复项，不是推车逻辑问题。

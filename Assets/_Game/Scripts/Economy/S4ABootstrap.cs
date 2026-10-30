@@ -1,5 +1,6 @@
 using Mirror;
 using ScavengeNightmare.Save;
+using ScavengeNightmare.Gameplay;
 using UnityEngine;
 
 namespace ScavengeNightmare.Economy
@@ -54,7 +55,11 @@ namespace ScavengeNightmare.Economy
 
             if (TeamAccount.Instance != null)
             {
+                // 换关回到本场景时 GameRoot 还在（DontDestroyOnLoad），不能再建第二个账本，
+                // 但**必须**把本场景的物件与推车补上——早先这里直接 yield break，
+                // 结果是「第二次进关没有车、没有货」，一切与推车相关的验收全部静默失效。
                 Debug.Log("[S4A] S4A_BOOT_OK spawned=0 reason=already_exists");
+                EnsureSceneObjects();
                 yield break;
             }
 
@@ -92,6 +97,24 @@ namespace ScavengeNightmare.Economy
 
             yield return new WaitForSeconds(0.2f);
             SpawnCart();
+        }
+
+        /// <summary>
+        /// 换关后的重入入口：补推车、（服务端）补物件。
+        /// 由 <see cref="LevelRouteService"/> 在场景切换完成后调用，幂等。
+        /// 为什么不能只靠 Start()：NetworkManager 是 DontDestroyOnLoad 的，
+        /// 它身上的组件 Start() 一生只跑一次，换关根本不会再触发。
+        /// </summary>
+        [Server]
+        public void EnsureSceneObjects()
+        {
+            SpawnCart();
+
+            PropSpawner spawner = GetComponent<PropSpawner>();
+            if (spawner != null)
+            {
+                spawner.RespawnForNewScene();
+            }
         }
 
         /// <summary>

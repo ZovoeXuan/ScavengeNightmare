@@ -186,10 +186,27 @@ namespace ScavengeNightmare.Networking
             List<GrabbableProp> pool = new();
             foreach (GrabbableProp prop in FindObjectsByType<GrabbableProp>(FindObjectsSortMode.None))
             {
-                if (prop != null && prop.CurrentValue > 0)
+                if (prop == null || prop.CurrentValue <= 0)
                 {
-                    pool.Add(prop);
+                    continue;
                 }
+
+                // 退化碰撞体（占位盒/触发器）不能上板：它没有实际体积，一推就穿过板面掉下去。
+                // 已知 vase 的 BoxCollider 是占位尺寸（实测 width=0.00，板面布局会把它和别的货
+                // 叠到同一坐标），属**资产待修项**，先在候选池外挡掉，
+                // 避免「随机挑到一件必掉的货」让用例看起来时好时坏。
+                Collider footprint = prop.GetComponent<Collider>();
+                if (footprint == null || Mathf.Max(footprint.bounds.size.x, footprint.bounds.size.z) < 0.15f)
+                {
+                    continue;
+                }
+
+                if (prop.Profile != null && string.Equals(prop.Profile.id, "vase", System.StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                pool.Add(prop);
             }
 
             pool.Sort((a, b) => a.Mass.CompareTo(b.Mass));
@@ -451,10 +468,27 @@ namespace ScavengeNightmare.Networking
             List<GrabbableProp> pool = new();
             foreach (GrabbableProp prop in FindObjectsByType<GrabbableProp>(FindObjectsSortMode.None))
             {
-                if (prop != null && prop.CurrentValue > 0)
+                if (prop == null || prop.CurrentValue <= 0)
                 {
-                    pool.Add(prop);
+                    continue;
                 }
+
+                // 退化碰撞体（占位盒/触发器）不能上板：它没有实际体积，一推就穿过板面掉下去。
+                // 已知 vase 的 BoxCollider 是占位尺寸（实测 width=0.00，板面布局会把它和别的货
+                // 叠到同一坐标），属**资产待修项**，先在候选池外挡掉，
+                // 避免「随机挑到一件必掉的货」让用例看起来时好时坏。
+                Collider footprint = prop.GetComponent<Collider>();
+                if (footprint == null || Mathf.Max(footprint.bounds.size.x, footprint.bounds.size.z) < 0.15f)
+                {
+                    continue;
+                }
+
+                if (prop.Profile != null && string.Equals(prop.Profile.id, "vase", System.StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                pool.Add(prop);
             }
 
             return pool;

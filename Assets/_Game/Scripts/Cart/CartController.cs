@@ -593,7 +593,15 @@ namespace ScavengeNightmare.Cart
             {
                 Vector3 scale = box.transform.lossyScale;
                 float width = Mathf.Max(Mathf.Abs(box.size.x * scale.x), Mathf.Abs(box.size.z * scale.z));
-                return width * 0.5f;
+
+                // 0 尺寸的 BoxCollider（触发器、占位盒）不能当尺寸来源：
+                // 拿它算会得到半宽 0，几件货全叠在同一坐标上，推行时互相顶飞（实测 3 件只剩 2 件）。
+                if (width > 0.05f)
+                {
+                    // 下限 0.10m 半宽（0.20m 宽）：退化碰撞体（触发器/占位盒）会让布局把几件货
+                    // 叠到同一个坐标上，推行时互相顶飞。宁可多占一点板面，也不能叠放。
+                    return Mathf.Max(width * 0.5f, 0.1f);
+                }
             }
 
             Collider collider = prop.GetComponent<Collider>();
@@ -603,7 +611,7 @@ namespace ScavengeNightmare.Cart
             }
 
             Vector3 size = collider.bounds.size;
-            return Mathf.Max(size.x, size.z) * 0.5f;
+            return Mathf.Max(Mathf.Max(size.x, size.z) * 0.5f, 0.1f);
         }
 
         /// <summary>布局用半宽：优先用装载瞬间记下的值，没有记录（理论上不该发生）才回落实时测量。</summary>

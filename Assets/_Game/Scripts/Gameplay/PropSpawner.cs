@@ -29,6 +29,22 @@ namespace ScavengeNightmare.Gameplay
 
         private bool spawned;
 
+        /// <summary>
+        /// 换关重入：清掉「已生成」标记再跑一遍生成协程。
+        /// 只增不改——原有 Start 路径一行不动，保证 Main / Supermarket 的既有验收不受影响。
+        /// </summary>
+        public void RespawnForNewScene()
+        {
+            if (!NetworkServer.active)
+            {
+                Debug.LogWarning("[D65] D65_RESPAWN_SKIP reason=server_inactive");
+                return;
+            }
+
+            spawned = false;
+            StartCoroutine(SpawnWhenServerReady());
+        }
+
         private void Start()
         {
             StartCoroutine(SpawnWhenServerReady());

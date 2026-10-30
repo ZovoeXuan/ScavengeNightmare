@@ -29,7 +29,33 @@ namespace ScavengeNightmare.Economy
             }
         }
 
-        [SyncVar] private long balance;
+        [SyncVar(hook = nameof(OnBalanceReplicated))] private long balance;
+
+        /// <summary>客户端侧观察到的余额（由 SyncVar 钩子维护）。GATE_WALLET_SYNC 的 client 值取它。</summary>
+        private long observedBalance;
+
+        public long ObservedBalance => observedBalance;
+
+        /// <summary>仅测试用：让下一次复制被「吃掉」，用来验证同步探针真的能发现不一致。</summary>
+        public bool SkipNextBalanceHook;
+
+        private void OnBalanceReplicated(long oldValue, long newValue)
+        {
+            if (SkipNextBalanceHook)
+            {
+                SkipNextBalanceHook = false;
+                Debug.Log($"[S4A] S4A_WALLET_SYNC_BREAK injected=1 dropped={newValue} kept={observedBalance}");
+                return;
+            }
+
+            observedBalance = newValue;
+        }
+
+        public override void OnStartClient()
+        {
+            base.OnStartClient();
+            observedBalance = balance;
+        }
         [SyncVar] private int legProgress;
         [SyncVar] private int legQuota = 1800;
         [SyncVar] private int legIndex = 1;

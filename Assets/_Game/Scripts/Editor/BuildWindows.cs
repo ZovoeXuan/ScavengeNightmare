@@ -17,6 +17,7 @@ public static class BuildWindows
     private const string MainScene = "Assets/_Game/Scenes/Main.unity";
     private const string MarketScene = "Assets/_Game/Scenes/Supermarket.unity";
     private const string NightScene = "Assets/_Game/Scenes/Night1.unity";
+    private const string SafehouseScene = "Assets/_Game/Scenes/Safehouse.unity";
 
     [MenuItem("Build/Windows x64")]
     public static void Build()
@@ -54,7 +55,9 @@ public static class BuildWindows
 
         var options = new BuildPlayerOptions
         {
-            scenes = new[] { scene },
+            // sprint4a 包里夜路与安全屋必须都在：换关靠 ServerChangeScene 按名字加载，
+            // 场景没进 Build Settings 会在运行时直接报「scene not found」，而且只在换关那一刻才炸。
+            scenes = sprint4a ? new[] { NightScene, SafehouseScene } : new[] { scene },
             locationPathName = output,
             target = BuildTarget.StandaloneWindows64,
             options = BuildOptions.None

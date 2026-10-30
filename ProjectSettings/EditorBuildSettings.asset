@@ -8,6 +8,12 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/_Game/Scenes/Main.unity
     guid: 2bb9d764b91a8214f950295bb2f98f78
+  - enabled: 1
+    path: Assets/_Game/Scenes/Safehouse.unity
+    guid: 6193fba951571d347805802f73931ce5
+  - enabled: 1
+    path: Assets/_Game/Scenes/Night1.unity
+    guid: 23dca5d7277eca14db8f8de7b5e8a64d
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_UseUCBPForAssetBundles: 0

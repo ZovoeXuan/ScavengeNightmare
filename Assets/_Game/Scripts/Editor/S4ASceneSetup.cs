@@ -57,6 +57,7 @@ namespace ScavengeNightmare.EditorTools
             RebuildAnchors(scene);
             EnsureQuotaTerminal(scene);
             EnsureShop(scene);
+            EnsureRoute(scene);
             EnsurePlayerEquipment();
             EnsureCartInScene(scene);
             EnsureBootstrap(scene, prefab, cartPrefab);
@@ -68,6 +69,10 @@ namespace ScavengeNightmare.EditorTools
             AssetDatabase.SaveAssets();
             EditorSceneManager.CloseScene(scene, true);
             AssetDatabase.Refresh();
+
+            // 安全屋必须在夜路存完盘之后再建：NewScene(Single) 会卸载当前场景。
+            EnsureSafehouseScene();
+            RegisterBuildScene(NightScene);
 
             EditorSceneManager.OpenScene(NightScene, OpenSceneMode.Single);
             int anchors = UnityEngine.Object.FindObjectsByType<PropSpawnAnchor>(FindObjectsSortMode.None).Length;
@@ -417,6 +422,117 @@ namespace ScavengeNightmare.EditorTools
 
         private const string PlayerPrefabPath = "Assets/_Game/Prefabs/Player.prefab";
 
+        private const string SafehouseScenePath = "Assets/_Game/Scenes/Safehouse.unity";
+
+        /// <summary>夜路侧的路由物件：撤离门 + 出生锚点 + 路由服务（挂在 NM 上，DDOL）。</summary>
+        private static void EnsureRoute(Scene scene)
+        {
+            NetworkManager[] managers = UnityEngine.Object.FindObjectsByType<NetworkManager>(FindObjectsSortMode.None);
+            if (managers.Length > 0 && managers[0].GetComponent<LevelRouteService>() == null)
+            {
+                managers[0].gameObject.AddComponent<LevelRouteService>();
+                EditorUtility.SetDirty(managers[0].gameObject);
+            }
+
+            if (UnityEngine.Object.FindObjectsByType<LevelPortal>(FindObjectsSortMode.None).Length == 0)
+            {
+                GameObject portal = new("LevelPortal_Exit");
+                // 与公秤终端（x∈[-2,2]）错开，否则同一次长按会被两边同时处理
+                portal.transform.position = new Vector3(-6f, 0.5f, -16.5f);
+                BoxCollider box = portal.AddComponent<BoxCollider>();
+                box.size = new Vector3(2f, 3f, 2f);
+                box.isTrigger = true;
+                portal.AddComponent<LevelPortal>();
+                EditorUtility.SetDirty(portal);
+            }
+
+            if (UnityEngine.Object.FindObjectsByType<SceneEntryAnchor>(FindObjectsSortMode.None).Length == 0)
+            {
+                GameObject anchor = new("SceneEntryAnchor_Night1");
+                anchor.transform.position = new Vector3(0f, 0.05f, 15f);
+                SceneEntryAnchor entry = anchor.AddComponent<SceneEntryAnchor>();
+                entry.yawDegrees = 180f;
+                EditorUtility.SetDirty(anchor);
+            }
+        }
+
+        /// <summary>
+        /// 安全屋场景：一个封闭房间 + 商店终端 + 返回门 + 出生锚点。
+        /// 刻意从零搭而不是复制夜路再删——复制会把货架、推车锚点、公秤全带过来，
+        /// 删漏一个就是「安全屋里也能刷货」这种没人会发现的问题。
+        /// </summary>
+        private static void EnsureSafehouseScene()
+        {
+            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            GameObject floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            floor.name = "Floor";
+            floor.transform.position = new Vector3(0f, -0.25f, 0f);
+            floor.transform.localScale = new Vector3(26f, 0.5f, 18f);
+
+            CreateWall("Wall_North", new Vector3(0f, 2f, 9f), new Vector3(26f, 4f, 0.5f));
+            CreateWall("Wall_South", new Vector3(0f, 2f, -9f), new Vector3(26f, 4f, 0.5f));
+            CreateWall("Wall_West", new Vector3(-13f, 2f, 0f), new Vector3(0.5f, 4f, 18f));
+            CreateWall("Wall_East", new Vector3(13f, 2f, 0f), new Vector3(0.5f, 4f, 18f));
+
+            GameObject light = new("KeyLight");
+            light.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+            Light lamp = light.AddComponent<Light>();
+            lamp.type = LightType.Directional;
+            lamp.intensity = 1.1f;
+
+            GameObject shop = new("ShopTerminal");
+            shop.transform.position = new Vector3(0f, 0.6f, 3f);
+            BoxCollider shopBox = shop.AddComponent<BoxCollider>();
+            shopBox.size = new Vector3(3f, 2.4f, 3f);
+            shopBox.isTrigger = true;
+            shop.AddComponent<ShopTerminal>();
+            shop.AddComponent<ScavengeNightmare.UI.ShopHUD>();
+
+            GameObject portal = new("LevelPortal_Safehouse");
+            portal.transform.position = new Vector3(0f, 0.5f, -6f);
+            BoxCollider portalBox = portal.AddComponent<BoxCollider>();
+            portalBox.size = new Vector3(2f, 3f, 2f);
+            portalBox.isTrigger = true;
+            portal.AddComponent<LevelPortal>();
+
+            GameObject anchor = new("SceneEntryAnchor_Safehouse");
+            anchor.transform.position = new Vector3(0f, 0.05f, 5.5f);
+            SceneEntryAnchor entry = anchor.AddComponent<SceneEntryAnchor>();
+            entry.yawDegrees = 180f;
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene, SafehouseScenePath);
+
+            RegisterBuildScene(SafehouseScenePath);
+            Debug.Log($"[S4A] S4A_SAFEHOUSE_BUILT path={SafehouseScenePath}");
+        }
+
+        private static void CreateWall(string name, Vector3 position, Vector3 scale)
+        {
+            GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            wall.name = name;
+            wall.transform.position = position;
+            wall.transform.localScale = scale;
+        }
+
+        private static void RegisterBuildScene(string path)
+        {
+            List<EditorBuildSettingsScene> scenes = new(EditorBuildSettings.scenes);
+
+            foreach (EditorBuildSettingsScene s in scenes)
+            {
+                if (s.path == path)
+                {
+                    return;
+                }
+            }
+
+            scenes.Add(new EditorBuildSettingsScene(path, true));
+            EditorBuildSettings.scenes = scenes.ToArray();
+            Debug.Log($"[S4A] S4A_BUILD_SETTINGS_ADD path={path} total={scenes.Count}");
+        }
+
         /// <summary>
         /// 手电筒组件挂在玩家预制体上（手持装备属于玩家，不属于场景）。
         /// 只增不改：已有就跳过，避免每次 Setup 都重写预制体、把别人手改的东西冲掉。
@@ -678,6 +794,11 @@ namespace ScavengeNightmare.EditorTools
             if (host.GetComponent<S4ACarryCapTest>() == null)
             {
                 host.AddComponent<S4ACarryCapTest>();
+            }
+
+            if (host.GetComponent<S4ALoopTest>() == null)
+            {
+                host.AddComponent<S4ALoopTest>();
             }
 
             EditorUtility.SetDirty(host);
