@@ -51,7 +51,7 @@ namespace ScavengeNightmare.Networking
             // 而且断言会在“被污染的世界里自洽通过”，是最难查的一类假通过。
             ScavengeNightmare.Traits.TraitSettings.ForceNoTraits = true;
             ScavengeNightmare.Economy.S4AInput.SuppressManual = true;
-            Debug.Log("[S4A] S4A_NEUTRAL_OK traits=none");
+            Debug.Log("[S4A] S4A_NEUTRAL_OK traits=none feel=" + (S4ACli.Value("-feel=") ?? "default").ToLowerInvariant());
 
             // Story 2 起账本会落盘。这个用例的 TALLY 断言的是「本轮 accepted == 本轮 unique」，
             // 一旦把上一轮的 txn/balance 恢复进来，断言会立刻变成历史累计值而对不上。

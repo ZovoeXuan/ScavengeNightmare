@@ -115,6 +115,9 @@ namespace ScavengeNightmare.Networking
             ScavengeNightmare.Traits.TraitSettings.ForceNoTraits = true;
             ScavengeNightmare.Economy.S4AInput.SuppressManual = true;
 
+            // 与其它 4A 用例同一口径：回归脚本第一行就查这句，缺了就整条判失败
+            Debug.Log("[S4A] S4A_NEUTRAL_OK traits=none feel=" + (S4ACli.Value("-feel=") ?? "default").ToLowerInvariant());
+
             NetworkManager manager = NetworkManager.singleton;
             if (manager == null)
             {

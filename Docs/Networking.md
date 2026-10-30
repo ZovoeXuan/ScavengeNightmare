@@ -241,3 +241,38 @@ Host 模式显示「本地房主（无网络延迟）」，因为本地连接 rt
 2. **断线检测依赖 KCP 超时**：若将来换 transport（如 Steam P2P），需重新确认其超时行为与 `lastMessageTime` 更新频率。
 3. **压测只测了 1 房主 + 1 客户端**：40 物件下"1 个远程客户端"的实测带宽 451 kbps，4 人局是按 `×3` 外推的，未实测 3 客户端同时收包。D22 压测时补。
 4. **预警/断线 UI 未做多语言与无障碍**：IMGUI 临时件，D32 换正式 UI。
+
+---
+
+## 十一、Sprint 4A 权限矩阵与踩坑（2026-10-30）
+
+### 11.1 谁有权写
+
+| 状态 | 类型 | 权威方 | 客户端可写 |
+|---|---|---|---|
+| `TeamAccount.balance / legProgress / legQuota / legIndex / quotaReached` | SyncVar | 服务端 | ❌ |
+| `TeamAccount.ownedMask / visitPurchases` | SyncVar | 服务端 | ❌ |
+| 购买 / 撤销 | `[Command]` → 服务端七步 | 服务端 | 仅上报意图 |
+| `CartController.state / loadKg / itemCount / parked` | SyncVar | 服务端 | ❌ |
+| 推车物理位姿 | `NetworkTransformReliable` ServerToClient | 服务端 | ❌ |
+| `PlayerEquipment.lightOn` | SyncVar（`CmdToggleLight`） | 服务端 | 仅上报按键 |
+| 关卡切换 | 服务端 `ServerChangeScene` | 服务端 | ❌ |
+| 场景重建后的玩家落点 | 服务端 `LevelRouteService` | 服务端 | ❌ |
+
+**唯一写盘出口**：`P0SaveService.TryCommit / TryCommitState`。玩法代码一律不得 `File.Write*`。
+购买与撤销同样走这条出口，用**负向流水**（`value = -price`，`cargoId = shop:<pid>`）承载，
+所以 `balance == SumFromTxns()` 这条恒等式在购物之后依然成立。
+
+### 11.2 三条踩过的坑
+
+1. **`[Command]` 不能挂在场景对象上**。场景对象没有 owner，`connectionToClient` 恒为 `null`，
+   服务端复核距离永远拿到 `-1`，表现是「客户端以为在店里、服务端一律判不在店里」。
+   商店的买入/撤销 Command 因此挂在 `PlayerInteract`（玩家自己拥有）上，再由它调 `ShopTerminal` 裁决。
+2. **换关后组件 `Start()` 不会重跑**。NetworkManager 是 `DontDestroyOnLoad` 的，它身上挂的
+   `PropSpawner` / `S4ABootstrap` 一生只执行一次 `Start()`。换关必须显式调用
+   `S4ABootstrap.EnsureSceneObjects()`（→ `SpawnCart()` + `PropSpawner.RespawnForNewScene()`）。
+   早先这里走 `if (TeamAccount.Instance != null) yield break`，结果是第二关进场没有车也没有货。
+3. **路由摆位不能无条件做**。用例/玩法刚把玩家放到某处，0.6s 后被「挪回入口锚点」，
+   一次打挂商店、推车、公秤三条用例。现在只救「还留在原点」的玩家——
+   那才是 `GetStartPosition()` 拿到空表的真实故障表现。
+

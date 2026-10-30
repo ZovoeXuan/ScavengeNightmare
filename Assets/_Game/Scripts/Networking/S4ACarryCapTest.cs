@@ -37,7 +37,7 @@ namespace ScavengeNightmare.Networking
             Application.targetFrameRate = 60;
             ScavengeNightmare.Traits.TraitSettings.ForceNoTraits = true;
             ScavengeNightmare.Economy.S4AInput.SuppressManual = true;
-            Debug.Log("[S4A] S4A_NEUTRAL_OK traits=none feel=light");
+            Debug.Log("[S4A] S4A_NEUTRAL_OK traits=none feel=" + (S4ACli.Value("-feel=") ?? "default").ToLowerInvariant());
 
             if (string.IsNullOrEmpty(S4ACli.Value("-savedir=")))
             {

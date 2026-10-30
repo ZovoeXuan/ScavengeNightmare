@@ -101,7 +101,7 @@ namespace ScavengeNightmare.Networking
             Application.targetFrameRate = 60;
             ScavengeNightmare.Traits.TraitSettings.ForceNoTraits = true;
             ScavengeNightmare.Economy.S4AInput.SuppressManual = true;
-            Debug.Log("[S4A] S4A_NEUTRAL_OK traits=none");
+            Debug.Log("[S4A] S4A_NEUTRAL_OK traits=none feel=" + (S4ACli.Value("-feel=") ?? "default").ToLowerInvariant());
 
             if (string.IsNullOrEmpty(S4ACli.Value("-savedir=")))
             {
@@ -191,16 +191,8 @@ namespace ScavengeNightmare.Networking
                     continue;
                 }
 
-                // 退化碰撞体（占位盒/触发器）不能上板：它没有实际体积，一推就穿过板面掉下去。
-                // 已知 vase 的 BoxCollider 是占位尺寸（实测 width=0.00，板面布局会把它和别的货
-                // 叠到同一坐标），属**资产待修项**，先在候选池外挡掉，
-                // 避免「随机挑到一件必掉的货」让用例看起来时好时坏。
-                Collider footprint = prop.GetComponent<Collider>();
-                if (footprint == null || Mathf.Max(footprint.bounds.size.x, footprint.bounds.size.z) < 0.15f)
-                {
-                    continue;
-                }
-
+                // 只挡已知的坏资产，不按体积筛：玻璃杯本身就只有 0.12m，
+                // 一按「体积小于 0.15 就排除」会把 1kg 轻货（A5 与质量比用例都靠它）一起筛掉。
                 if (prop.Profile != null && string.Equals(prop.Profile.id, "vase", System.StringComparison.Ordinal))
                 {
                     continue;
@@ -473,16 +465,8 @@ namespace ScavengeNightmare.Networking
                     continue;
                 }
 
-                // 退化碰撞体（占位盒/触发器）不能上板：它没有实际体积，一推就穿过板面掉下去。
-                // 已知 vase 的 BoxCollider 是占位尺寸（实测 width=0.00，板面布局会把它和别的货
-                // 叠到同一坐标），属**资产待修项**，先在候选池外挡掉，
-                // 避免「随机挑到一件必掉的货」让用例看起来时好时坏。
-                Collider footprint = prop.GetComponent<Collider>();
-                if (footprint == null || Mathf.Max(footprint.bounds.size.x, footprint.bounds.size.z) < 0.15f)
-                {
-                    continue;
-                }
-
+                // 只挡已知的坏资产，不按体积筛：玻璃杯本身就只有 0.12m，
+                // 一按「体积小于 0.15 就排除」会把 1kg 轻货（A5 与质量比用例都靠它）一起筛掉。
                 if (prop.Profile != null && string.Equals(prop.Profile.id, "vase", System.StringComparison.Ordinal))
                 {
                     continue;
@@ -657,7 +641,9 @@ namespace ScavengeNightmare.Networking
             fCart.TeleportWithCargo(new Vector3(0f, 20.1f, 15f));
             Teleport(fMotor.transform, new Vector3(0f, 20.2f, 16.4f));
             fMotor.transform.LookAt(new Vector3(0f, 20.2f, 10f));
-            yield return new WaitForSeconds(0.8f);
+            // 1.6s：跑道刚生成、车刚落地时如果立刻开推，前几帧会被物理求解吃掉，
+            // 实测出现过「推了 0.48m 就再不动」（机器同时有其它任务时更容易复现）。
+            yield return new WaitForSeconds(1.6f);
 
             Debug.Log($"[S4A] S4A_A4_TRACK playerY={fMotor.transform.position.y:F2} cartY={fCart.transform.position.y:F2}");
 
@@ -769,6 +755,13 @@ namespace ScavengeNightmare.Networking
             // 放 42kg 雕像（0.89m 宽）会被 deck_full 拒，把 A5 的结论搅浑。
             for (int i = 0; i < pool.Count && seed.Count < 3; i++)
             {
+                // A5 验的是「折叠 → 抱车 → 爬楼梯」，不是装载容量。
+                // 混进 42kg 大件会先撞同板质量比闸门（42:1）直接拒装，把结论搅成装载问题。
+                if (pool[i].Mass > 15f)
+                {
+                    continue;
+                }
+
                 Collider c = pool[i].GetComponent<Collider>();
                 float width = c != null ? Mathf.Max(c.bounds.size.x, c.bounds.size.z) : 0.4f;
                 if (width > 0.45f)

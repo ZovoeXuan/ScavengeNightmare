@@ -1,0 +1,21 @@
+# Sprint 4A regression case list
+#
+# Format:  <case>|<args>|<required success marker>|<note>
+#   - Lines starting with # or blank lines are skipped.
+#   - passes / expected are derived from the number of case lines here.
+#     Never hardcode the count in the .bat: a deleted case must turn the run red.
+#   - The marker must be the single terminal line of that case (S4A_*_OK).
+
+s4adeposit|-s4adeposit|S4A_STORY1_OK|Story1 scale deposit / dedup / reload survival
+s4asave|-s4asave|S4A_SAVE_OK|Story2 atomic save (full suite: Tools/s4a_save_suite.sh)
+s4acart|-s4acart|S4A_CART_OK|Story3 load -> push -> whole-cart submit
+s4acart-a4|-s4acart-a4|S4A_A4_OK|Story3 A4 102kg heavy push 30m, no cargo lost
+s4acart-a5|-s4acart-a5|S4A_A5_OK|Story3 A5 fold, carry cart up stairs 3.00m
+s4acart-noise|-s4acart-noise|S4A_CART_NOISE_OK|Story3 noise 3 tiers monotonic + memory
+s4acart-narrow|-s4acart-narrow|S4A_CART_NARROWDOOR_OK|Story3 narrow door 3 states + fold reject
+s4acart-heavy|-s4acart-heavy|S4A_CART_HEAVY_OK|Story3 A3 manual carry 35kg cabinet
+s4acart-ratio|-s4acart-ratio|S4A_CART_RATIO_OK|Story3 same-deck mass ratio gate
+s4ashop|-s4ashop|S4A_SHOP_OK|Story4 shop 5 reject branches + balance identity
+s4acarrycap|-s4acarrycap|S4A_CARRY_CAP_OK|Story4 carry hard cap + grip training + flashlight
+s4aloop|-s4aloop|S4A_LOOP_OK|Story4 level loop Night1 -> Safehouse -> Night1
+s4aloop-asyncbreak|-s4aloop -s4asyncbreak|S4A_LOOP_OK|Story4 wallet sync probe self-check (match must be False)
