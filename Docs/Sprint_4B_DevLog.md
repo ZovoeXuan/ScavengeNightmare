@@ -12,11 +12,12 @@
 |---|---|
 | S4B-1 生存链 | **完成**：HP / 单次伤害保护 / 倒地 / 掉手持物 / 自由自救 / 队友救援 / 团灭 |
 | S4B-2 噪音+空眼 | **完成**：本地听觉半径 4/10/16m、`GATE_MON_HEARD/CHASE` 可归因、七状态、追逐预算、推车击退、楼梯、脱困 |
-| 新增自动化 | 3 条（S4B-1）：`-s4bvitals`、`-s4bwipe`、`-s4bdownhost`+`-s4bdownclient`；3 条（S4B-2）：`-s4bnoise`、`-s4bmon` |
+| S4B-3 导购+尖啸罐 | **完成**：注视冻结（25°/18m/LOS）、0.35s 前摇 + 0.8s 突进、撞墙僵直 1.5s、尖啸罐 1.5s 前摇 +45 噪音 / 12m 眩晕掉货、投掷提前引爆 +15 无掉落 |
+| 新增自动化 | 3 条（S4B-1）：`-s4bvitals`、`-s4bwipe`、`-s4bdownhost`+`-s4bdownclient`；3 条（S4B-2）：`-s4bnoise`、`-s4bmon`；2 条（S4B-3）：`-s4bgreeter`、`-s4bscream` |
 | 4A 回归 | **13/13 全绿**（`S4A_REGRESSION_OK passes=13 expected=13`） |
 | 商店 | 6/8 上架（新增自救针/急救包）；工具带/体能归 S4B-5 |
 | 已知阻塞项 | 无 |
-| 未覆盖 | 怪物主动伤害由 AI 自己打（S4B-2 已验单刀 50）、塑料导购/蝙蝠、诅咒（S4B-4）、三关梯度（S4B-5）、A10/A11 真人 |
+| 未覆盖 | 蝙蝠、诅咒（S4B-4）、三关梯度（S4B-5）、A10/A11 真人 |
 
 ---
 
@@ -224,9 +225,98 @@ Client: S4B_DOWN_CLIENT_READY netId=21
 
 ---
 
-## 8. 遗留（S4B-2 之后）
+## 8. S4B-3 证据（塑料导购 + 尖啸罐）
 
-- **S4B-3**：塑料导购视线冻结、尖啸罐提前引爆、双人追逐预算实测。
+### 8.1 装配与静态校验
+
+```
+[S4B] S4B_MON_PROFILE_CREATED path=Assets/_Game/Resources/Monsters/PlasticGreeter.asset
+[S4B] S4B_MON_PROFILE_CREATED path=Assets/_Game/Resources/Monsters/ScreamCan.asset
+[S4B] S4B_MON_PREFAB_READY path=Assets/_Game/Prefabs/Monster_PlasticGreeter.prefab
+[S4B] S4B_MON_PREFAB_READY path=Assets/_Game/Prefabs/Monster_ScreamCan.prefab
+[S4B] S4B_NIGHT_COMPONENTS_SAVED
+[S4B] S4B_VALIDATE_OK vitals=1 revive=1 wipe=1 downedHud=1 shop6=1 tests=7 monsters=6 monsterKinds=3 noiseHud=1 monsterPrefab=1 noiseState=1
+```
+
+校验新增 `greeter_profile/scream_profile/greeter_brain/greeter_identity/scream_brain/scream_identity/greeter_test/scream_test`；三只怪物预制体全部 `RegisterPrefab`，两个测试组件挂在 Night1 的测试宿主上。
+
+### 8.2 `-s4bgreeter`（单人 Host，货架过道 z=9）
+
+```
+[S4B] GATE_GREETER_WATCH monster=plastic_greeter mask=1 players=1
+[S4B] S4B_GREETER_WATCH mask=1 expectedBit=1 players=1 displacement=0.00
+[S4B] GATE_GREETER_WATCH monster=plastic_greeter mask=0 players=1
+[S4B] GATE_GREETER_DASH monster=plastic_greeter target=3 from=(-8.0,9.0) to=(-2.0,9.0) seconds=0.80
+[S4B] S4B_GREETER_DASH seconds=0.38 distance08=2.51
+[S4B] S4B_GREETER_REFREEZE distance=0.00
+[S4B] GATE_GREETER_WALL monster=plastic_greeter seconds=1.5 at=(-3.1,9.0)
+[S4B] S4B_GREETER_WALL seconds=1.50
+[S4B] GATE_GREETER_ATTACK monster=plastic_greeter target=3 damage=30
+[S4B] S4B_GREETER_ATTACK damage=30 hpAfter=70
+[S4B] S4B_GREETER_BUDGET maxActive=1 limit=1 denied=189
+[S4B] S4B_GREETER_OK watchedDisplacement=0.00 windup=0.38 dash08=2.51 wallStun=1.50 damage=30 ok=True
+[S4B] S4B_MON_OK monsters=3 states=7 unattributed=0
+```
+
+覆盖：被注视时位移严格 0（`watchedMask` 对每位玩家逐位写入）；全员移开视线后才进前摇，0.35s 计划值实测 0.38s（帧粒度）；0.8s 内位移 2.51m > 2m；撞墙打 `GATE_GREETER_WALL` 并僵直 1.50s；突进命中单刀 30；单人追逐预算 1 且被拒 189 次（三只追逐型同时想追，只有 1 只在 Chase）；导购不可击杀（无 HP/死亡路径）。
+
+### 8.3 `-s4bscream`（单人 Host）
+
+```
+[S4B] S4B_SCREAM_HOLD prop=toolbox holding=True
+[S4B] GATE_SCREAM_TRIGGER monster=scream_can reason=player:3 windup=1.50 at=(0.0,10.0)
+[S4B] GATE_SCREAM_DROP target=3 reason=scream
+[S4B] GATE_SCREAM_STUN target=3 seconds=2.0 dist=5.0
+[S4B] GATE_SCREAM monster=scream_can noise=45 stunned=1 dropped=1 reason=player:3 at=(0.0,10.0)
+[S4B] S4B_SCREAM_METRICS windup=1.50 noise=45 stunRemaining=2.00 dropped=True
+[S4B] GATE_SCREAM_PREEMPT monster=scream_can amount=15 prop=can speed=8.0 dropped=0
+[S4B] S4B_SCREAM_PREEMPT noise=15 holding=True stunned=False screamed=False
+[S4B] GATE_SCREAM_ALERT monster=holloweye netId=23 source=scream_can dist=4.0
+[S4B] S4B_SCREAM_ALERT nearState=Investigate nearSource=scream_can farState=Patrol level=44.4
+[S4B] S4B_SCREAM_OK windup=1.50 noise=45 preempt=15 ok=True
+```
+
+覆盖：6m 内玩家触发 1.5s 前摇；尖叫 +45 噪音、12m 内眩晕 2s 并掉手持物（`dropped=1`，掉货走 `GATE_SCREAM_DROP`）；前摇内投掷件以 ≥5m/s 命中 → `NOISE_ADD source=scream_can_preempt amount=15`、不掉货（`dropped=0`）、不眩晕；尖叫后最近空眼进 Investigate（`nearSource=scream_can`），12m 外那只仍 Patrol；喇叭本身不移动、不产生钱（4B 不接击杀经济）。
+
+### 8.4 本轮修掉的问题（都由用例逼出来）
+
+1. **导购命中判定拿不到目标**：`StartDash` 只写 `targetVitals`，基类 `EnterChase` 对「非视野路径」的 `targetNetId` 留空，`TickDash` 命中判定因此永远落空；且子类直接写 SyncVar 触发 `CS0122`。改为基类 `EnterChase` 在 `target != null` 时统一补写 `targetVitals/targetNetId`，子类只读。
+2. **`-s4bgreeter` 走廊撞上货架**：首版跑道 (0,8)→(0,16) 正好穿过 z=10.5 的货架，避障转向后卡住，实测 `dash_distance=1.74`、`refreeze_moved=0.70`（撞墙僵直被算成「移开后未冻结」）。整体搬到 D12 货架排间过道 z=9，复跑 `distance08=2.51`、`refreeze=0.00`。
+3. **`-s4bscream` 前摇测晚了**：玩家一开始就站在 6m 内，抓货等待期间前摇已经开始，实测 `windup=1.32`。改为先在 6m 外 `EnsureHolding`，再 `TeleportAndCarry` 进入触发半径，复跑 `windup=1.50`。
+4. **`-s4bscream` 提前引爆段把「假掉货」也判成通过**：瞬移抓货后 `ServerHoldStep` 的 `delta` 远超 `breakDistance=2.6` 立即脱手；同时 `GrabController.Update` 因鼠标左键未按自动 `RequestRelease`。改为 `PlacePropNearPlayer`/`TeleportAndCarry` 让货跟人走、`SetInputEnabled(false)` 关掉鼠标自动扔，并补 `not_holding_before_scream` 断言把假阳性挡掉；复跑 `holding=True`、`GATE_SCREAM_PREEMPT ... dropped=0`。
+
+### 8.5 覆盖表（S4B-3 视角）
+
+| 项 | 判据 | 结果 |
+|---|---|---|
+| 注视冻结 | 25°/18m/LOS 内位移=0 | ✅ `displacement=0.00`，`watchedMask` 逐位对位 |
+| 移开视线 | 全员移开后 0.35s 前摇 | ✅ `windup=0.38`（帧粒度） |
+| 突进 | 0.8s 内位移 >2m | ✅ `dash08=2.51` |
+| 撞墙 | 僵直 1.5s | ✅ `seconds=1.50` |
+| 导购伤害 | 单刀 30 | ✅ `damage=30 hpAfter=70` |
+| 追逐预算 | 三只追逐型同时 Chase ≤2，单人限 1 | ✅ `maxActive=1 limit=1 denied=189`；第 3 只 `GATE_MON_BUDGET` 可查 |
+| 尖叫触发 | 6m 内玩家或噪音 ≥40 | ✅ `reason=player:3 windup=1.50` |
+| 尖叫效果 | +45 噪音、12m 眩晕 2s、掉手持物 | ✅ `noise=45 stun=2.0 dropped=1` |
+| 提前引爆 | 投掷件命中 → +15 噪音、无掉落 | ✅ `amount=15 dropped=0` |
+| 尖叫后告警 | 最近空眼进 Investigate（来源 scream_can） | ✅ `nearSource=scream_can`，12m 外 Patrol |
+| 三怪并存 | `S4B_MON_OK monsters=3 states=7 unattributed=0` | ✅ |
+| 4A 回归 | 13 条全绿 | ✅ 13/13 |
+
+### 8.6 新增 / 修改文件（S4B-3）
+
+| 类型 | 文件 |
+|---|---|
+| 新增（怪物） | `Monsters/PlasticGreeterBrain.cs`、`Monsters/ScreamCanBrain.cs` |
+| 新增（测试） | `Networking/S4BGreeterTest.cs`、`Networking/S4BScreamTest.cs` |
+| 修改（框架） | `MonsterBrain.cs`（`HasCustomTick`/`CustomTick`/`ServerAlert`/`IsWindingUp`/`EnterChase` 补写目标）、`MonsterProfile.cs`（两组新数值）、`MonsterVisual.cs`（前兆脉冲）、`MonsterSpawner.cs`（两种新怪 + 测试跳过闸门）、`MonsterDirector.cs`（`BudgetDeniedCount`） |
+| 修改（装配） | `Editor/S4BSceneSetup.cs`（两个新 profile/预制体/测试组件/校验项） |
+| 资源 | `Prefabs/Monster_PlasticGreeter.prefab`、`Prefabs/Monster_ScreamCan.prefab`、`Resources/Monsters/PlasticGreeter.asset`、`Resources/Monsters/ScreamCan.asset`、`Scenes/Night1.unity` |
+| 技术债 | 两只新怪仍是占位胶囊 + 程序化染色（T3），S4B-5 前不接美术资源；导购/尖啸罐不参与击杀经济 |
+
+---
+
+## 9. 遗留（S4B-3 之后）
+
 - **S4B-4**：笑面偶 / 无字牌位、60% 计价、休眠。
 - **S4B-5**：12/14/16 锚点、1800/2400/2800 配额、工具带/体能、`-s4bshop8`、21 条回归、怪物美术替换。
 - **已知限制**：追逐速度按「最好窗口」判定（货架走廊避障会周期性吃掉速度）；楼梯判据取 2.9m（skinWidth 0.08 + 台阶落点）；怪物只在 Night1 装配，Safehouse 不生成。

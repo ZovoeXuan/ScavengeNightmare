@@ -32,6 +32,9 @@ namespace ScavengeNightmare.Monsters
 
         public int ChaseLimit => PlayerVitals.All.Count <= 2 ? 1 : 2;
 
+        /// <summary>被预算拒绝的次数（验收只看「拒绝确实发生过」，不限制具体次数）。</summary>
+        public int BudgetDeniedCount { get; private set; }
+
         public bool TryEnterChase(MonsterBrain brain)
         {
             if (brain == null)
@@ -46,6 +49,7 @@ namespace ScavengeNightmare.Monsters
 
             if (chasers.Count >= ChaseLimit)
             {
+                BudgetDeniedCount++;
                 Debug.Log($"[S4B] GATE_MON_BUDGET denied={brain.netId} active={chasers.Count} limit={ChaseLimit}");
                 return false;
             }

@@ -15,6 +15,8 @@ namespace ScavengeNightmare.Monsters
     public sealed class MonsterSpawner : MonoBehaviour
     {
         [SerializeField] private GameObject hollowEyePrefab;
+        [SerializeField] private GameObject plasticGreeterPrefab;
+        [SerializeField] private GameObject screamCanPrefab;
 
         [Tooltip("生成安全期（秒）。L1=120 / L2=90 / L3=60，S4B-5 按关读取")]
         [SerializeField] private float safetySeconds = 120f;
@@ -56,7 +58,7 @@ namespace ScavengeNightmare.Monsters
             }
 
             // 4A 基线进程不生成怪；两条 4B-2 用例自己精确控制生成位置。
-            if (S4ACli.Is4ARun || S4ACli.Any("-s4bnoise", "-s4bmon"))
+            if (S4ACli.Is4ARun || S4ACli.Any("-s4bnoise", "-s4bmon", "-s4bgreeter", "-s4bscream"))
             {
                 Debug.Log("[S4B] S4B_MON_SPAWN_SKIP reason=test_controlled");
                 yield break;
@@ -90,18 +92,35 @@ namespace ScavengeNightmare.Monsters
         [Server]
         public MonsterBrain ServerSpawnHollowEye(Vector3 feetPosition)
         {
-            if (hollowEyePrefab == null)
+            return ServerSpawnPrefab(hollowEyePrefab, "Monster_HollowEye", "holloweye", feetPosition);
+        }
+
+        [Server]
+        public MonsterBrain ServerSpawnPlasticGreeter(Vector3 feetPosition)
+        {
+            return ServerSpawnPrefab(plasticGreeterPrefab, "Monster_PlasticGreeter", "plastic_greeter", feetPosition);
+        }
+
+        [Server]
+        public MonsterBrain ServerSpawnScreamCan(Vector3 feetPosition)
+        {
+            return ServerSpawnPrefab(screamCanPrefab, "Monster_ScreamCan", "scream_can", feetPosition);
+        }
+
+        private MonsterBrain ServerSpawnPrefab(GameObject prefab, string instanceName, string kind, Vector3 feetPosition)
+        {
+            if (prefab == null)
             {
-                Debug.LogError("[S4B] S4B_MON_SPAWN_FAIL reason=missing_holloweye_prefab");
+                Debug.LogError($"[S4B] S4B_MON_SPAWN_FAIL reason=missing_prefab kind={kind}");
                 return null;
             }
 
             Vector3 position = new(feetPosition.x, Mathf.Max(0.05f, feetPosition.y), feetPosition.z);
             GameObject instance = Instantiate(
-                hollowEyePrefab,
+                prefab,
                 position,
                 Quaternion.Euler(0f, Random.Range(0f, 360f), 0f));
-            instance.name = "Monster_HollowEye";
+            instance.name = instanceName;
 
             NetworkServer.Spawn(instance);
             MonsterBrain brain = instance.GetComponent<MonsterBrain>();
@@ -111,7 +130,7 @@ namespace ScavengeNightmare.Monsters
                 spawned.Add(brain);
             }
 
-            Debug.Log($"[S4B] S4B_MON_SPAWN monster=holloweye at=({position.x:F1},{position.z:F1}) total={SpawnCount}");
+            Debug.Log($"[S4B] S4B_MON_SPAWN monster={kind} at=({position.x:F1},{position.z:F1}) total={SpawnCount}");
             return brain;
         }
 

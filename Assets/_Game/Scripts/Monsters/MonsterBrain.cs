@@ -26,23 +26,23 @@ namespace ScavengeNightmare.Monsters
         [SyncVar] private uint targetNetId;
 
         private CharacterController controller;
-        private MonsterSenses senses;
-        private MonsterNavigator navigator;
+        protected MonsterSenses senses;
+        protected MonsterNavigator navigator;
         private MonsterDirector director;
 
         private readonly List<PatrolAnchor> anchors = new();
         private Vector3 spawnPosition;
         private Vector3 patrolTarget;
-        private Vector3 lastKnownTarget;
+        protected Vector3 lastKnownTarget;
         private bool forcedTarget;
 
-        private float stateEnteredAt;
+        protected float stateEnteredAt;
         private float lastSightAt;
         private float lastNoiseAt;
         private float attackHitAt;
         private float attackEndsAt;
         private bool attackLanded;
-        private float stunUntil;
+        protected float stunUntil;
         private float flashlightExposure;
         private float stalledSeconds;
         private string lastChaseSource = "none";
@@ -53,7 +53,13 @@ namespace ScavengeNightmare.Monsters
         private bool hasLastCartPosition;
         private float lastCartHitAt = -10f;
 
-        private PlayerVitals targetVitals;
+        protected PlayerVitals targetVitals;
+
+        /// <summary>子类是否接管整个状态机（S4B-3 的导购 / 尖啸罐）。</summary>
+        protected virtual bool HasCustomTick => false;
+
+        /// <summary>前兆表现（导购前摇 / 尖啸罐蓄力），MonsterVisual 用它加快脉冲。</summary>
+        public virtual bool IsWindingUp => false;
 
         public MonsterState State => (MonsterState)stateByte;
         public uint TargetNetId => targetNetId;
@@ -172,6 +178,12 @@ namespace ScavengeNightmare.Monsters
 
             UpdateFlashlight(deltaTime, now);
 
+            if (HasCustomTick)
+            {
+                CustomTick(deltaTime, now, seen, heard);
+                return;
+            }
+
             switch (State)
             {
                 case MonsterState.Spawn:
@@ -212,6 +224,14 @@ namespace ScavengeNightmare.Monsters
 
                     break;
             }
+        }
+
+        /// <summary>
+        /// 子类专用 tick：接管后基类不再跑巡逻/追击状态机。
+        /// 仍然保留感知刷新、手电与推车击退——导购可以被车撞，尖啸罐不该被感知带跑。
+        /// </summary>
+        protected virtual void CustomTick(float deltaTime, float now, PlayerVitals seen, AudibleNoise heard)
+        {
         }
 
         private void TickPatrol(PlayerVitals seen, AudibleNoise heard, float now)
@@ -385,7 +405,7 @@ namespace ScavengeNightmare.Monsters
             }
         }
 
-        private void MoveTo(Vector3 target, float speed)
+        protected void MoveTo(Vector3 target, float speed)
         {
             navigator.MoveTowards(target, speed);
             CheckStuck();
@@ -409,7 +429,7 @@ namespace ScavengeNightmare.Monsters
             }
         }
 
-        private void EnterInvestigate(AudibleNoise heard)
+        protected void EnterInvestigate(AudibleNoise heard)
         {
             lastKnownTarget = heard.Position;
             lastNoiseAt = Time.time;
@@ -421,7 +441,7 @@ namespace ScavengeNightmare.Monsters
             EnterState(MonsterState.Investigate);
         }
 
-        private void EnterChase(PlayerVitals target, string source, Vector3 at, AudibleNoise heard = default)
+        protected void EnterChase(PlayerVitals target, string source, Vector3 at, AudibleNoise heard = default)
         {
             if (!heard.HasSource)
             {
@@ -451,6 +471,12 @@ namespace ScavengeNightmare.Monsters
                 targetVitals = null;
                 targetNetId = 0;
                 lastNoiseAt = Time.time;
+            }
+            else
+            {
+                // 导购这类「不靠视野找目标」的子类需要这里补写，否则 TickChase/命中判定拿不到目标。
+                targetVitals = target;
+                targetNetId = target.netId;
             }
 
             lastChaseSource = source;
@@ -485,7 +511,7 @@ namespace ScavengeNightmare.Monsters
             EnterState(MonsterState.Search);
         }
 
-        private void EnterState(MonsterState next)
+        protected void EnterState(MonsterState next)
         {
             if (State == MonsterState.Chase && next != MonsterState.Chase && director != null)
             {
@@ -586,6 +612,27 @@ namespace ScavengeNightmare.Monsters
             Debug.Log($"[S4B] GATE_MON_STUN monster={DisplayId} seconds={seconds:F1} source={source}");
         }
 
+        /// <summary>
+        /// 服务端：被点名听到一声巨响（尖啸罐的尖叫）。只进 Investigate，绝不直接 Chase——
+        /// 「最近的那只去看一眼」是 4B-3 的明确口径，全图追猎会毁掉 Chase 预算。
+        /// </summary>
+        [Server]
+        public void ServerAlert(Vector3 position, string source)
+        {
+            lastKnownTarget = position;
+            lastNoiseAt = Time.time;
+            LastHeardSource = source;
+            LastHeardBand = NoiseBus.ZoneForLevel(NoiseBus.Level);
+            LastHeardDistance = PlanarDistance(transform.position, position);
+            LastHeardAttenuation = 0f;
+
+            Debug.Log($"[S4B] GATE_MON_HEARD monster={DisplayId} source={source} " +
+                      $"at=({position.x:F1},{position.z:F1}) band={LastHeardBand} " +
+                      $"level={NoiseBus.Level:F1} dist={LastHeardDistance:F1} attenuation=forced");
+
+            EnterState(MonsterState.Investigate);
+        }
+
         /// <summary>连续 2s 卡住：回退最近巡逻锚点。两次都失败才算 fail（A9 不接受 fail）。</summary>
         [Server]
         public void ServerUnstick()
@@ -660,7 +707,7 @@ namespace ScavengeNightmare.Monsters
             }
         }
 
-        private static float PlanarDistance(Vector3 a, Vector3 b)
+        protected static float PlanarDistance(Vector3 a, Vector3 b)
         {
             return new Vector2(a.x - b.x, a.z - b.z).magnitude;
         }

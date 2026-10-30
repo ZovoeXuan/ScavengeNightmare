@@ -42,6 +42,34 @@ namespace ScavengeNightmare.Monsters
         public float flashlightStunSeconds = 1.5f;
         public float stunSeconds = 2f;
 
+        [Header("塑料导购（S4B-3）")]
+        [Tooltip("玩家注视它的水平角度（度）：在 25° 内且 18m 内无遮挡就算被看着")]
+        public float greeterWatchAngle = 25f;
+        public float greeterWatchRange = 18f;
+        [Tooltip("全员移开视线后的前摇（秒）")]
+        public float greeterWindupSeconds = 0.35f;
+        [Tooltip("前摇结束后的突进时长（秒），0.8s 内必须位移 >2m")]
+        public float greeterDashSeconds = 0.8f;
+        [Tooltip("突进撞墙后的僵直（秒）")]
+        public float greeterWallStunSeconds = 1.5f;
+
+        [Header("尖啸罐（S4B-3）")]
+        [Tooltip("触发半径：玩家进入 6m 内，或全局噪音 ≥ 40")]
+        public float screamPlayerRange = 6f;
+        public float screamNoiseThreshold = 40f;
+        [Tooltip("尖叫前摇（秒）")]
+        public float screamWindupSeconds = 1.5f;
+        [Tooltip("尖叫时追加的噪音（+45）")]
+        public float screamNoiseAmount = 45f;
+        [Tooltip("尖叫眩晕半径与时长（12m / 2s）")]
+        public float screamStunRadius = 12f;
+        public float screamStunSeconds = 2f;
+        [Tooltip("前摇内被投掷物命中：引爆噪音 +15，无掉落")]
+        public float screamPreemptNoise = 15f;
+        public float screamPreemptRadius = 3.5f;
+        [Tooltip("两次尖叫之间的冷却")]
+        public float screamCooldownSeconds = 6f;
+
         [Header("外观（占位胶囊）")]
         public Color bodyColor = new(0.55f, 0.55f, 0.58f, 1f);
     }

@@ -57,9 +57,21 @@ namespace ScavengeNightmare.Monsters
 
             if (body != null)
             {
-                float pulse = brain.State == MonsterState.Attack
-                    ? 1f + 0.07f * Mathf.Sin(Time.time * 16f)
-                    : 1f;
+                // S4B-3：前兆（导购前摇 / 尖啸罐蓄力）用更快的脉冲，玩家能提前看出「要动了」。
+                float pulse;
+                if (brain.IsWindingUp)
+                {
+                    pulse = 1f + 0.09f * Mathf.Sin(Time.time * 24f);
+                }
+                else if (brain.State == MonsterState.Attack)
+                {
+                    pulse = 1f + 0.07f * Mathf.Sin(Time.time * 16f);
+                }
+                else
+                {
+                    pulse = 1f;
+                }
+
                 body.localScale = new Vector3(0.7f * pulse, 0.9f * pulse, 0.7f * pulse);
             }
         }

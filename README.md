@@ -2,11 +2,11 @@
 
 1-4 人合作物理拾荒微恐喜剧，Steam PC 买断制。一局 10-20 分钟：进图 → 拾荒 → 被追 → 撤离 → 结算。
 
-> 当前状态：**Sprint 4B · Story 2 完成**（2026-10-30）：噪音消费（本地听觉 4/10/16m）+ 空眼怪物（七状态 / 追逐预算 / 手电僵直 / 推车击退 / 楼梯 / 卡住脱困）。`S4B_VALIDATE_OK`，`-s4bnoise` / `-s4bmon` 全绿，4A 回归 13/13。
+> 当前状态：**Sprint 4B · Story 3 完成**（2026-10-30）：塑料导购（注视冻结 / 0.35s 前摇 + 0.8s 突进 / 撞墙僵直 1.5s）+ 尖啸罐（1.5s 前摇 +45 噪音、12m 眩晕掉货、投掷提前引爆 +15 无掉落）。`S4B_VALIDATE_OK tests=7 monsterKinds=3`，`-s4bgreeter` / `-s4bscream` 全绿，4A 回归 13/13。
 >
-> 里程碑：D1–D13 ✓ / Sprint 4A（13/13）✓ / Sprint 4B-1 生存链 ✓ / Sprint 4B-2 噪音+空眼 ✓
+> 里程碑：D1–D13 ✓ / Sprint 4A（13/13）✓ / Sprint 4B-1 生存链 ✓ / Sprint 4B-2 噪音+空眼 ✓ / Sprint 4B-3 导购+尖啸罐 ✓
 >
-> **下一步**：S4B-3 塑料导购视线冻结 + 尖啸罐提前引爆。详见 `Docs/Sprint_4B_TechnicalPlan.md` 与 `Docs/Sprint_4B_DevLog.md`。
+> **下一步**：S4B-4 两件诅咒（笑面偶 / 无字牌位、60% 计价、休眠）。详见 `Docs/Sprint_4B_TechnicalPlan.md` 与 `Docs/Sprint_4B_DevLog.md`。
 
 ## 引擎与版本
 
@@ -114,4 +114,4 @@ game/
 
 ## 下一步
 
-D3（10.29）：导入 Mirror + KcpTransport，房主开服 / 客户端连接，4 人胶囊体同步移动，HUD 显示延迟。
+S4B-4：两件诅咒（笑面偶 / 无字牌位）——60% 计价、休眠与唤醒。详见 `Docs/Sprint_4B_TechnicalPlan.md`。

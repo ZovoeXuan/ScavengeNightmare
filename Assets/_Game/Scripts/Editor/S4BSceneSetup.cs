@@ -22,9 +22,13 @@ namespace ScavengeNightmare.EditorTools
         private const string PlayerPrefab = "Assets/_Game/Prefabs/Player.prefab";
         private const string GameRootPrefab = "Assets/_Game/Prefabs/S4AGameRoot.prefab";
         private const string MonsterPrefab = "Assets/_Game/Prefabs/Monster_HollowEye.prefab";
+        private const string GreeterPrefab = "Assets/_Game/Prefabs/Monster_PlasticGreeter.prefab";
+        private const string ScreamPrefab = "Assets/_Game/Prefabs/Monster_ScreamCan.prefab";
         private const string MonsterMat = "Assets/_Game/Data/Monsters/HollowEyeMat.mat";
         private const string MonsterProfileDir = "Assets/_Game/Resources/Monsters";
         private const string HollowEyeProfilePath = MonsterProfileDir + "/HollowEye.asset";
+        private const string GreeterProfilePath = MonsterProfileDir + "/PlasticGreeter.asset";
+        private const string ScreamProfilePath = MonsterProfileDir + "/ScreamCan.asset";
         private const string ShopCatalogPath = "Assets/_Game/Resources/ShopCatalog.asset";
 
         private static readonly (string name, Vector3 pos)[] MonsterAnchors =
@@ -88,6 +92,16 @@ namespace ScavengeNightmare.EditorTools
             Check(monsterPrefab != null && monsterPrefab.GetComponent<NetworkTransformReliable>() != null, "monster_transform");
             Check(monsterPrefab != null && monsterPrefab.GetComponent<MonsterVisual>() != null, "monster_visual");
             Check(AssetDatabase.LoadAssetAtPath<MonsterProfile>(HollowEyeProfilePath) != null, "monster_profile");
+            Check(AssetDatabase.LoadAssetAtPath<MonsterProfile>(GreeterProfilePath) != null, "greeter_profile");
+            Check(AssetDatabase.LoadAssetAtPath<MonsterProfile>(ScreamProfilePath) != null, "scream_profile");
+
+            GameObject greeterPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(GreeterPrefab);
+            Check(greeterPrefab != null && greeterPrefab.GetComponent<PlasticGreeterBrain>() != null, "greeter_brain");
+            Check(greeterPrefab != null && greeterPrefab.GetComponent<NetworkIdentity>() != null, "greeter_identity");
+
+            GameObject screamPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(ScreamPrefab);
+            Check(screamPrefab != null && screamPrefab.GetComponent<ScreamCanBrain>() != null, "scream_brain");
+            Check(screamPrefab != null && screamPrefab.GetComponent<NetworkIdentity>() != null, "scream_identity");
 
             EditorSceneManager.OpenScene(NightScene, OpenSceneMode.Single);
 
@@ -99,6 +113,8 @@ namespace ScavengeNightmare.EditorTools
             Check(nm != null && nm.GetComponent<S4BReviveTest>() != null, "revive_test");
             Check(nm != null && nm.GetComponent<S4BNoiseTest>() != null, "noise_test");
             Check(nm != null && nm.GetComponent<S4BMonsterTest>() != null, "monster_test");
+            Check(nm != null && nm.GetComponent<S4BGreeterTest>() != null, "greeter_test");
+            Check(nm != null && nm.GetComponent<S4BScreamTest>() != null, "scream_test");
             Check(nm != null && nm.GetComponent<MonsterSpawner>() != null, "monster_spawner");
             Check(nm != null && nm.GetComponent<MonsterDirector>() != null, "monster_director");
 
@@ -117,8 +133,8 @@ namespace ScavengeNightmare.EditorTools
 
             if (failures == 0)
             {
-                Debug.Log($"[S4B] S4B_VALIDATE_OK vitals=1 revive=1 wipe=1 downedHud=1 shop6=1 tests=5 " +
-                          $"monsters={monsterAnchors} noiseHud=1 monsterPrefab=1 noiseState=1");
+                Debug.Log($"[S4B] S4B_VALIDATE_OK vitals=1 revive=1 wipe=1 downedHud=1 shop6=1 tests=7 " +
+                          $"monsters={monsterAnchors} monsterKinds=3 noiseHud=1 monsterPrefab=1 noiseState=1");
             }
         }
 
@@ -192,6 +208,8 @@ namespace ScavengeNightmare.EditorTools
             changed |= AddIfMissing<S4BReviveTest>(nm.gameObject);
             changed |= AddIfMissing<S4BNoiseTest>(nm.gameObject);
             changed |= AddIfMissing<S4BMonsterTest>(nm.gameObject);
+            changed |= AddIfMissing<S4BGreeterTest>(nm.gameObject);
+            changed |= AddIfMissing<S4BScreamTest>(nm.gameObject);
             changed |= AddIfMissing<MonsterDirector>(nm.gameObject);
 
             MonsterSpawner spawner = nm.GetComponent<MonsterSpawner>();
@@ -202,24 +220,29 @@ namespace ScavengeNightmare.EditorTools
             }
 
             GameObject monsterPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(MonsterPrefab);
-            if (monsterPrefab != null && spawner != null)
+            GameObject greeterPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(GreeterPrefab);
+            GameObject screamPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(ScreamPrefab);
+
+            if (spawner != null)
             {
                 SerializedObject spawnerSo = new(spawner);
-                SerializedProperty prefabProp = spawnerSo.FindProperty("hollowEyePrefab");
-                if (prefabProp != null && prefabProp.objectReferenceValue != monsterPrefab)
-                {
-                    prefabProp.objectReferenceValue = monsterPrefab;
-                    spawnerSo.ApplyModifiedPropertiesWithoutUndo();
-                    changed = true;
-                }
+                changed |= AssignSpawnerPrefab(spawnerSo, "hollowEyePrefab", monsterPrefab);
+                changed |= AssignSpawnerPrefab(spawnerSo, "plasticGreeterPrefab", greeterPrefab);
+                changed |= AssignSpawnerPrefab(spawnerSo, "screamCanPrefab", screamPrefab);
+                spawnerSo.ApplyModifiedPropertiesWithoutUndo();
             }
 
             changed |= EnsureMonsterAnchors();
 
-            if (monsterPrefab != null)
+            foreach (GameObject prefab in new[] { monsterPrefab, greeterPrefab, screamPrefab })
             {
-                bool wasRegistered = nm.spawnPrefabs != null && nm.spawnPrefabs.Contains(monsterPrefab);
-                S4ASceneSetup.RegisterPrefab(scene, monsterPrefab);
+                if (prefab == null)
+                {
+                    continue;
+                }
+
+                bool wasRegistered = nm.spawnPrefabs != null && nm.spawnPrefabs.Contains(prefab);
+                S4ASceneSetup.RegisterPrefab(scene, prefab);
                 if (!wasRegistered)
                 {
                     changed = true;
@@ -340,6 +363,11 @@ namespace ScavengeNightmare.EditorTools
                 Debug.Log("[S4B] S4B_MON_PROFILE_CREATED path=" + HollowEyeProfilePath);
             }
 
+            MonsterProfile greeter = EnsureExtraProfile(GreeterProfilePath, "plastic_greeter", "塑料导购", 30,
+                new Color(0.88f, 0.56f, 0.64f, 1f));
+            MonsterProfile scream = EnsureExtraProfile(ScreamProfilePath, "scream_can", "尖啸罐", 0,
+                new Color(0.32f, 0.78f, 0.86f, 1f));
+
             Material material = AssetDatabase.LoadAssetAtPath<Material>(MonsterMat);
             if (material == null)
             {
@@ -366,9 +394,41 @@ namespace ScavengeNightmare.EditorTools
             if (existing != null)
             {
                 RepairMonsterPrefab(existing, profile, material);
-                return;
+            }
+            else
+            {
+                CreateHollowEyePrefab(profile, material);
             }
 
+            EnsureExtraMonsterPrefab(GreeterPrefab, typeof(PlasticGreeterBrain), greeter, material, "Monster_PlasticGreeter");
+            EnsureExtraMonsterPrefab(ScreamPrefab, typeof(ScreamCanBrain), scream, material, "Monster_ScreamCan");
+        }
+
+        private static MonsterProfile EnsureExtraProfile(
+            string path, string id, string displayName, int attackDamage, Color bodyColor)
+        {
+            MonsterProfile profile = AssetDatabase.LoadAssetAtPath<MonsterProfile>(path);
+            if (profile != null)
+            {
+                return profile;
+            }
+
+            profile = ScriptableObject.CreateInstance<MonsterProfile>();
+            profile.id = id;
+            profile.displayName = displayName;
+            profile.attackDamage = attackDamage;
+            profile.bodyColor = bodyColor;
+            // 导购与尖啸罐不吃手电：导购只有「撞墙僵直」，尖啸罐只会被打断前摇。
+            profile.flashlightStunSeconds = 0f;
+            AssetDatabase.CreateAsset(profile, path);
+            EditorUtility.SetDirty(profile);
+            AssetDatabase.SaveAssets();
+            Debug.Log("[S4B] S4B_MON_PROFILE_CREATED path=" + path);
+            return profile;
+        }
+
+        private static void CreateHollowEyePrefab(MonsterProfile profile, Material material)
+        {
             GameObject root = new("Monster_HollowEye");
 
             CharacterController controller = root.AddComponent<CharacterController>();
@@ -409,10 +469,96 @@ namespace ScavengeNightmare.EditorTools
 
             AssignVisual(visual, brain, bodyRenderer, body.transform);
 
-            GameObject saved = PrefabUtility.SaveAsPrefabAsset(root, MonsterPrefab);
+            PrefabUtility.SaveAsPrefabAsset(root, MonsterPrefab);
             Object.DestroyImmediate(root);
             AssetDatabase.SaveAssets();
             Debug.Log("[S4B] S4B_MON_PREFAB_CREATED path=" + MonsterPrefab);
+        }
+
+        /// <summary>S4B-3 的两只新怪：结构与空眼一致，只换 Brain 与数值表。</summary>
+        private static void EnsureExtraMonsterPrefab(
+            string path, System.Type brainType, MonsterProfile profile, Material material, string rootName)
+        {
+            GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            bool changed = existing == null;
+
+            if (existing == null)
+            {
+                existing = new GameObject(rootName);
+                existing.AddComponent<NetworkIdentity>();
+                NetworkTransformReliable reliable = existing.AddComponent<NetworkTransformReliable>();
+                reliable.syncInterval = 0.066f;
+
+                CharacterController controller = existing.AddComponent<CharacterController>();
+                controller.height = 1.8f;
+                controller.radius = 0.35f;
+                controller.center = new Vector3(0f, 0.9f, 0f);
+                controller.stepOffset = 0.5f;
+                controller.slopeLimit = 50f;
+                controller.skinWidth = 0.08f;
+
+                GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                body.name = "Body";
+                body.transform.SetParent(existing.transform, false);
+                body.transform.localPosition = new Vector3(0f, 0.9f, 0f);
+                body.transform.localScale = new Vector3(0.7f, 0.9f, 0.7f);
+                Object.DestroyImmediate(body.GetComponent<Collider>());
+
+                MeshRenderer renderer = body.GetComponent<MeshRenderer>();
+                if (renderer != null && material != null)
+                {
+                    renderer.sharedMaterial = material;
+                }
+            }
+
+            Component brain = existing.GetComponent(brainType);
+            if (brain == null)
+            {
+                brain = existing.AddComponent(brainType);
+                changed = true;
+            }
+
+            SerializedObject brainSo = new(brain);
+            SerializedProperty profileProp = brainSo.FindProperty("profile");
+            if (profileProp != null && profileProp.objectReferenceValue == null)
+            {
+                profileProp.objectReferenceValue = profile;
+                brainSo.ApplyModifiedPropertiesWithoutUndo();
+                changed = true;
+            }
+
+            MonsterVisual visual = existing.GetComponent<MonsterVisual>();
+            if (visual == null)
+            {
+                visual = existing.AddComponent<MonsterVisual>();
+                changed = true;
+            }
+
+            Transform bodyTransform = existing.transform.Find("Body");
+            MeshRenderer bodyRendererComp = bodyTransform != null ? bodyTransform.GetComponent<MeshRenderer>() : null;
+            if (AssignVisual(visual, brain as MonsterBrain, bodyRendererComp, bodyTransform))
+            {
+                changed = true;
+            }
+
+            if (!changed)
+            {
+                return;
+            }
+
+            EditorUtility.SetDirty(existing);
+            if (AssetDatabase.LoadAssetAtPath<GameObject>(path) == null)
+            {
+                PrefabUtility.SaveAsPrefabAsset(existing, path);
+                Object.DestroyImmediate(existing);
+            }
+            else
+            {
+                PrefabUtility.SavePrefabAsset(existing);
+            }
+
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[S4B] S4B_MON_PREFAB_READY path={path}");
         }
 
         /// <summary>已存在的预制体就地补齐组件与引用（幂等），避免「预制体早就在、改了表却没生效」。</summary>
@@ -533,6 +679,23 @@ namespace ScavengeNightmare.EditorTools
             }
 
             prop.objectReferenceValue = value;
+            return true;
+        }
+
+        private static bool AssignSpawnerPrefab(SerializedObject spawnerSo, string field, GameObject prefab)
+        {
+            if (prefab == null)
+            {
+                return false;
+            }
+
+            SerializedProperty prop = spawnerSo.FindProperty(field);
+            if (prop == null || prop.objectReferenceValue == prefab)
+            {
+                return false;
+            }
+
+            prop.objectReferenceValue = prefab;
             return true;
         }
 
