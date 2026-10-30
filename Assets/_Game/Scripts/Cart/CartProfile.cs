@@ -74,6 +74,9 @@ namespace ScavengeNightmare.Cart
         public float maxFrameMove = 0.15f;
         [Tooltip("货物超出板面多少米算滑落")]
         public float cargoFallMargin = 0.15f;
+        [Tooltip("水平锚点跟随刚度（1/s）。40 在 50Hz 下等效 0.8/步，接近硬约束但允许一点滞后——"
+               + "这点滞后就是「没捆带子时货物会横向游走」的来源；打包胶带把它乘 2 后钳到 1.0（完全捆死）")]
+        public float cargoAnchorStiffness = 40f;
 
         public float DeckArea => deckLength * deckWidth;
 

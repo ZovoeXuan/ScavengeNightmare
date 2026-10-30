@@ -113,6 +113,7 @@ namespace ScavengeNightmare.Networking
 
             // 身份倍率会污染负重与交互距离，存档测试虽然不搬货，但保持和其他 4A 用例同一口径。
             ScavengeNightmare.Traits.TraitSettings.ForceNoTraits = true;
+            ScavengeNightmare.Economy.S4AInput.SuppressManual = true;
 
             NetworkManager manager = NetworkManager.singleton;
             if (manager == null)

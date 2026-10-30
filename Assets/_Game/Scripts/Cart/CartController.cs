@@ -574,14 +574,26 @@ namespace ScavengeNightmare.Cart
         }
 
         /// <summary>
-        /// 货物的水平半宽。取世界轴对齐包围盒的 x/z 较大值，对旋转物体偏保守——
-        /// 保守只会多留空隙，不会挤到旁边的货。
+        /// 货物的水平半宽。
+        /// **优先用 BoxCollider 的局部尺寸 × 缩放**，而不是世界包围盒：
+        /// 锚点带随机朝向（<c>randomYaw</c>），同一件货转 45° 后世界 AABB 会从 0.85 涨到 1.2，
+        /// 于是「同一份代码」有时装得下、有时报 deck_full。实测雕像 0.55 → 0.96，
+        /// 直接把 A4 的两件装车判成放不下。
+        /// 拿不到 BoxCollider 才回退到世界 AABB（此时只能接受它偏保守）。
         /// </summary>
         private static float HalfWidth(GrabbableProp prop)
         {
             if (prop == null)
             {
                 return 0.2f;
+            }
+
+            BoxCollider box = prop.GetComponent<BoxCollider>() ?? prop.GetComponentInChildren<BoxCollider>();
+            if (box != null)
+            {
+                Vector3 scale = box.transform.lossyScale;
+                float width = Mathf.Max(Mathf.Abs(box.size.x * scale.x), Mathf.Abs(box.size.z * scale.z));
+                return width * 0.5f;
             }
 
             Collider collider = prop.GetComponent<Collider>();

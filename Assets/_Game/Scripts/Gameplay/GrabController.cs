@@ -331,22 +331,28 @@ namespace ScavengeNightmare.Gameplay
                              + Vector3.up * holdHeightOffset;
             Vector3 delta = target - body.worldCenterOfMass;
 
-            if (delta.magnitude > profile.breakDistance)
+            // 防滑手套：脱手阈值与跟随加速度同时按倍率放大。
+            // 阈值放大是「抓得更牢」，加速度放大是「重货不会拖在身后」——两者缺一，
+            // 抱 42kg 冲刺时依然会被自己的速度拽脱手。
+            float gearScale = ScavengeNightmare.Economy.EquippedEffects.GrabBreakScale;
+            float breakDistance = profile.breakDistance * gearScale;
+
+            if (delta.magnitude > breakDistance)
             {
                 // 被门框 / 墙卡住：直接脱手，而不是硬拽穿模
-                Debug.Log($"[S4A] S4A_HOLD_RELEASE id={profile.id} delta={delta.magnitude:F2} break={profile.breakDistance} com={body.worldCenterOfMass} target={target}");
+                Debug.Log($"[S4A] S4A_HOLD_RELEASE id={profile.id} delta={delta.magnitude:F2} break={breakDistance:F2} gear={gearScale:F2} com={body.worldCenterOfMass} target={target}");
                 ServerRelease(false);
                 return;
             }
 
-            float maxSpeed = FeelSettings.GrabMaxSpeed(profile.grabMaxSpeed);
+            float maxSpeed = FeelSettings.GrabMaxSpeed(profile.grabMaxSpeed) * gearScale;
             // D8：角色手笨/手抖降低跟随刚度，物件更容易落后、被环境磕到
             float stiffness = FeelSettings.FollowStiffness(followStiffness) * Loadout.GrabStiffnessScale;
             Vector3 desired = Vector3.ClampMagnitude(delta * stiffness, maxSpeed);
             body.linearVelocity = Vector3.MoveTowards(
                 body.linearVelocity,
                 desired,
-                FeelSettings.GrabAcceleration(profile.grabAcceleration) * Time.fixedDeltaTime);
+                FeelSettings.GrabAcceleration(profile.grabAcceleration) * gearScale * Time.fixedDeltaTime);
             body.angularVelocity = Vector3.MoveTowards(body.angularVelocity, Vector3.zero, 18f * Time.fixedDeltaTime);
         }
 

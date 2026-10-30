@@ -378,6 +378,19 @@ namespace ScavengeNightmare.Networking
                 speed = externalSpeedCap;
             }
 
+            // Story 4：负重硬上限。≥15kg 的东西抱在手上时，冲刺也不许超过 3.135m/s。
+            // 这是**兜底**不是主手感：主手感仍是负重减速（carrySpeedMultiplier），
+            // 但商品/身份叠起来之后总得有一条谁都不能越过的线，否则「抱着保险箱跑得比空手快」
+            // 迟早会在某次数值调整后出现。
+            // 握力训练会把这个上限一起抬高（CarryBoost）——不抬的话，42kg 已经被钳在线上，
+            // 再缩小减速量也没有任何可观测效果。
+            float carryCap = CarryingHardCap * ScavengeNightmare.Economy.EquippedEffects.CarryBoost;
+            if (carryMassKg >= HeavyCarryThresholdKg && speed > carryCap)
+            {
+                speed = carryCap;
+                ReportCarryCapOnce(carryCap);
+            }
+
             planarVelocity = Vector3.MoveTowards(planarVelocity, desired * speed, acceleration * Time.deltaTime);
 
             if (controller.isGrounded)
@@ -429,6 +442,14 @@ namespace ScavengeNightmare.Networking
                 ? ScavengeNightmare.Gameplay.FeelSettings.Active.carryDivisor
                 : 70f);
             carrySpeedMultiplier = ScavengeNightmare.Gameplay.FeelSettings.CarryMultiplier(kg, divisor);
+
+            // 握力训练：负重**减速量**按倍率缩小（1.15 表示少损失 15%），不动 divisor。
+            // 改 divisor 会连带改变「多重算重货」的判定边界，副作用比收益大得多。
+            float carryBoost = ScavengeNightmare.Economy.EquippedEffects.CarryBoost;
+            if (carryBoost > 1.001f)
+            {
+                carrySpeedMultiplier = 1f - (1f - carrySpeedMultiplier) / carryBoost;
+            }
         }
 
         /// <summary>硬直时间倍率（D8）：抗揍的角色被砸顿得更短。</summary>
@@ -451,5 +472,24 @@ namespace ScavengeNightmare.Networking
 
         /// <summary>D8 交互距离倍率：近视眼看得近。</summary>
         public float InteractRangeScale => Loadout.InteractRangeScale;
+
+        /// <summary>负重硬上限的适用门槛：≥15kg 才算「重货」。</summary>
+        public const float HeavyCarryThresholdKg = 15f;
+
+        /// <summary>重货携带时的速度硬上限（m/s）。</summary>
+        public const float CarryingHardCap = 3.135f;
+
+        private float nextCarryCapLog;
+
+        private void ReportCarryCapOnce(float cap)
+        {
+            if (Time.unscaledTime < nextCarryCapLog)
+            {
+                return;
+            }
+
+            nextCarryCapLog = Time.unscaledTime + 1f;
+            Debug.Log($"[S4A] S4A_CARRY_CAP mass={carryMassKg:F1} speed={cap:F3} applied=1");
+        }
     }
 }

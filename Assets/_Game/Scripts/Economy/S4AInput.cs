@@ -14,6 +14,13 @@ namespace ScavengeNightmare.Economy
     {
         public static bool AutoInteract;
 
+        /// <summary>
+        /// 无人值守运行时置 true：彻底不读真人输入。
+        /// 不这么做的话，跑批时动一下鼠标就会把「按住左键」带进测试——
+        /// 实测过一次：开局玩家被判定成正在推车，handsBusy 锁住，A4 第一件货直接 grab 失败。
+        /// </summary>
+        public static bool SuppressManual;
+
         /// <summary>自动化用的「按住左键」。推车与抓货共用这一个键。</summary>
         public static bool AutoGrab;
 
@@ -21,6 +28,11 @@ namespace ScavengeNightmare.Economy
         {
             get
             {
+                if (SuppressManual)
+                {
+                    return false;
+                }
+
 #if ENABLE_INPUT_SYSTEM
                 Keyboard keyboard = Keyboard.current;
                 return keyboard != null && keyboard.eKey.isPressed;
@@ -41,6 +53,11 @@ namespace ScavengeNightmare.Economy
         {
             get
             {
+                if (SuppressManual)
+                {
+                    return false;
+                }
+
 #if ENABLE_INPUT_SYSTEM
                 UnityEngine.InputSystem.Mouse mouse = UnityEngine.InputSystem.Mouse.current;
                 return mouse != null && mouse.leftButton.isPressed;
@@ -58,6 +75,9 @@ namespace ScavengeNightmare.Economy
         /// <summary>自动化撤销（相当于按 U）。</summary>
         public static bool AutoUndo;
 
+        /// <summary>自动化按一次 F（手电开关）。置 true 后由 PlayerEquipment 消费并复位。</summary>
+        public static bool AutoToggleLight;
+
         public static int PendingBuyIndex => AutoBuyIndex > 0 ? AutoBuyIndex : ManualBuyIndex;
 
         public static bool UndoPressed => AutoUndo || ManualUndoPressed;
@@ -66,6 +86,11 @@ namespace ScavengeNightmare.Economy
         {
             get
             {
+                if (SuppressManual)
+                {
+                    return 0;
+                }
+
 #if ENABLE_INPUT_SYSTEM
                 Keyboard keyboard = Keyboard.current;
                 if (keyboard == null)
@@ -124,6 +149,11 @@ namespace ScavengeNightmare.Economy
         {
             get
             {
+                if (SuppressManual)
+                {
+                    return false;
+                }
+
 #if ENABLE_INPUT_SYSTEM
                 Keyboard keyboard = Keyboard.current;
                 return keyboard != null && keyboard.uKey.wasPressedThisFrame;

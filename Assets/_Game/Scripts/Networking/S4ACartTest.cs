@@ -100,6 +100,7 @@ namespace ScavengeNightmare.Networking
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = 60;
             ScavengeNightmare.Traits.TraitSettings.ForceNoTraits = true;
+            ScavengeNightmare.Economy.S4AInput.SuppressManual = true;
             Debug.Log("[S4A] S4A_NEUTRAL_OK traits=none");
 
             if (string.IsNullOrEmpty(S4ACli.Value("-savedir=")))
@@ -1016,9 +1017,16 @@ namespace ScavengeNightmare.Networking
             bool passedLoaded = zLoaded <= NarrowPassZ;
 
             // ---------- 态 2b：载货时折叠必须被拒 ----------
+            // 必须先把车退回门前再打这个探针：门南侧 1 米就是公秤停车位，
+            // 站在那儿按 E 会先被 QuotaTerminal 抢去整车提交（货瞬间清零），
+            // 「折叠被拒」这条分支根本走不到——实测过一次，断言全绿但什么都没验。
+            fCart.TeleportWithCargo(new Vector3(0f, 0.35f, NarrowStartZ));
+            yield return new WaitForSeconds(0.8f);
+
+            float zFold = fCart.transform.position.z;
             int rejectBefore = CartController.FoldRejectCount;
-            Teleport(fMotor.transform, new Vector3(0f, 1.05f, zLoaded + 1.3f));
-            fMotor.transform.LookAt(new Vector3(0f, 1.05f, zLoaded));
+            Teleport(fMotor.transform, new Vector3(0f, 1.05f, zFold + 1.0f));
+            fMotor.transform.LookAt(new Vector3(0f, 1.05f, zFold));
             yield return new WaitForSeconds(0.4f);
             yield return PressInteract();
 
@@ -1064,10 +1072,22 @@ namespace ScavengeNightmare.Networking
             Physics.SyncTransforms();
             yield return new WaitForSeconds(0.3f);
 
-            Teleport(fMotor.transform, new Vector3(0f, 1.05f, zLoaded + 1.3f));
-            fMotor.transform.LookAt(new Vector3(0f, 1.05f, zLoaded));
-            yield return new WaitForSeconds(0.3f);
-            yield return PressInteract();
+            Teleport(fMotor.transform, new Vector3(0f, 1.05f, zFold + 1.0f));
+            fMotor.transform.LookAt(new Vector3(0f, 1.05f, zFold));
+            yield return new WaitForSeconds(0.4f);
+
+            // 卸货后的货会被弹到脚边，CharacterController 可能把玩家挤开、超出 1.8m 交互距离。
+            // 所以每次按之前都重新对位，最多试 3 次，并把距离打出来便于事后判读。
+            int attempts = 0;
+            while (fCart.State == CartController.CartState.Deployed && attempts < 3)
+            {
+                attempts++;
+                Teleport(fMotor.transform, new Vector3(0f, 1.05f, zFold + 1.0f));
+                yield return new WaitForSeconds(0.25f);
+                float dist = Vector3.Distance(fMotor.transform.position, fCart.transform.position);
+                Debug.Log($"[S4A] S4A_CART_NARROWDOOR_FOLD_TRY n={attempts} dist={dist:F2} count={fCart.ItemCount} state={fCart.State}");
+                yield return PressInteract();
+            }
 
             bool folded = fCart.State == CartController.CartState.Carried;
             Debug.Log($"[S4A] S4A_CART_NARROWDOOR_FOLD state={fCart.State} folded={folded} count={fCart.ItemCount}");

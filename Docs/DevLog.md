@@ -309,3 +309,28 @@
      `-s4acart` 由 `failures=4` 回到 `failures=0`。
 - **回归**：`-s4acart` / `-a4` / `-a5` / `-noise` / `-narrow` / `-heavy` / `-ratio` / `-s4adeposit` 八条全绿
   （A4 30.01m，A5 3.00m / 69.1s，Story 1 余额 2650 未变）。
+
+### Story 4 · 商品效果接线（2026-10-30）
+
+- **四件商品全部接到真实判定点**（不是只上架）：
+  - `grip_gloves` 400：`GrabController.ServerHoldStep` 的脱手阈值、跟随上限速度、跟随加速度同时 ×1.5
+  - `packing_tape` 500：`CartCargo.Tick` 的水平锚点刚度 ×2（钳到 1.0 = 完全捆死）
+  - `flashlight` 350：`PlayerEquipment` + Command/SyncVar，F 键开关，射程 18m，撤销后自动熄灭
+  - `grip_training` 900：负重减速量与**负重硬上限**同时 ×1.15
+- **握力训练的语义改过一次（有实测依据）**：原本只缩放减速量（0.85），实测 42kg 时
+  基准速度 3.335 已经高于硬上限 3.135，缩小减速量会被上限一起钳住，比值只有 **1.017**
+  ——等于花了 900 块什么都没买到。改成「上限也一起抬」后 `heavyRatio=1.150`，正好 +15%。
+- **新增负重硬上限**：≥15kg 携带时速度 ≤ 3.135m/s（`S4A_CARRY_CAP applied=1`），
+  握力训练把它抬到 3.605。这是兜底线，主手感仍是负重减速。
+- **三个坑**：
+  1. `Command` 不能挂在场景对象上：场景对象没有 owner，`connectionToClient` 恒为 null，
+     服务端复核距离永远拿到 -1。商店买入/撤销的 Command 必须挂在玩家身上。
+  2. 无人值守跑批时必须 `S4AInput.SuppressManual = true`：跑批时动一下鼠标，
+     开局就会被判成「正在推车」，`handsBusy` 锁住抓货，A4 第一件货直接 grab 失败。
+  3. 装货布局不能用世界 AABB 量货物宽度：锚点带随机朝向，同一件雕像转 45° 后
+     AABB 从 0.55 涨到 0.96，A4 两件装车被判成 `deck_full`。改用 BoxCollider 局部尺寸 × 缩放。
+- **窄门用例的探针位置也是坑**：门南侧 1m 就是公秤停车位，站在那儿按 E 会先被
+  `QuotaTerminal` 抢去整车提交（货瞬间清零），「载货折叠被拒」根本走不到，
+  断言会全绿但什么都没验。探针改到远离公秤的门前再打。
+- **验收**：`S4A_CARRY_CAP_OK base=5.175 boosted=5.250 lightRatio=1.014 heavyBase=3.135
+  heavyBoost=3.605 cap=3.135 flashlight=1 ok=True`；九条 4A 用例全绿（A4 30.03m / A5 3.00m / 商店 identity=1）。

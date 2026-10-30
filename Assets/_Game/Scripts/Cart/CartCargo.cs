@@ -168,7 +168,20 @@ namespace ScavengeNightmare.Cart
                 // 4B 若要它必须靠撞击/翻车的显式事件，不能指望摩擦把它甩出去。
                 Vector3 wantLocal = new Vector3(anchor.x, local.y, anchor.z);
                 Vector3 wantWorld = deckTransform.TransformPoint(wantLocal);
-                body.MovePosition(new Vector3(wantWorld.x, body.position.y, wantWorld.z));
+
+                // 打包胶带的接线点：刚度乘 2 后钳到 1.0，等于完全捆死；
+                // 没胶带时留一点滞后，转弯时货会轻微横向游走——这才是「捆不捆」的差别。
+                float stiffness = profile.cargoAnchorStiffness
+                                  * ScavengeNightmare.Economy.EquippedEffects.CartSlipScale;
+                float t = Mathf.Clamp01(stiffness * deltaTime);
+
+                Vector3 current = body.position;
+                Vector3 planar = new(
+                    Mathf.Lerp(current.x, wantWorld.x, t),
+                    current.y,
+                    Mathf.Lerp(current.z, wantWorld.z, t));
+
+                body.MovePosition(planar);
 
                 // 判定只看竖直掉落：水平方向已由上面的锚点约束保证恒等于装车点，
                 // 而 MovePosition 是延迟生效的，立刻重读 body.position 拿到的还是旧值——
