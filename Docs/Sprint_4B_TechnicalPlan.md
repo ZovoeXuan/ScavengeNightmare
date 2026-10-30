@@ -21,7 +21,7 @@
 |---|---|---|---|
 | **R1** | 设计稿 v1 允许击杀、尸体可提交、武器与掉落经济；章程 17.20 明确「不用击杀怪物提供经济收益」 | **4B 不接击杀经济**：怪物是压力源，不是战利品。投掷/推车/手电只做**驱散、击退、短硬直**；尖啸罐可被提前引爆（无掉落）；不实现 HP 死亡、尸体、武器、伤害公式 | 章程不可妥协项优先。设计稿的 HP/伤害/尸体整章降为 **Post-P0 设计储备**，等用户明确修订 P0 范围后再立项，不能顺手做进来 |
 | **R2** | 设计稿 Maps_v1 给了 L1/L2/L3 三张新图；P0 §1 写「同一张手工图，差异只在锚点/诅咒/过关额」 | **4B 只用 Night1 一张图**；L2/L3 地图降为 Post-4B 的 Should/Could | 一张图 + 三种锚点分布已经能验证 A1/A2/A7/A9/A10；三张新图会把 4B 变成 4C |
-| **R3** | 设计稿已裁决过关额 2400/2600/3000（按三张新图总额 4600/4365/5335）；P0 §3.3 原表是 1800/2400/2800（按 3155/4365/4785） | **4B 用 1800/2400/2800**，因为 4B 用的是 P0 的 12/14/16 锚点构成，不是 Maps_v1 的三张新图。三关占比 **57.0% / 55.0% / 58.5%**，全在 50–60% 带内 | 把 2400 套到 3155 的图上会变成 76%，第 1 关失去教学属性。设计稿的 2400/2600/3000 只在「L1/L2/L3 三张新图都建完」时成立，写进技术债 |
+| **R3** | 设计稿已裁决过关额 2400/2600/3000（按三张新图总额 4600/4365/5335）；P0 §3.3 原表是 1800/2400/2800（按 3155/4365/4785） | **4B 用 1800/2400/2800**，因为 4B 用的是 P0 的 12/14/16 锚点构成，不是 Maps_v1 的三张新图。三关占比 **57.0% / 55.0% / 58.5%**，全在 50–60% 带内 | 把 2400 套到 3155 的图上会变成 76%，第 1 关失去教学属性。设计稿的 2400/2600/3000 只在「L1/L2/L3 三张新图都建完」时成立，写进技术债。**生成版 `ScavengeNightmare_DesignDoc.html` 里「过关额统一 2632」是 4A 历史口径，不是 4B 配额**；以本文件 §4.6 为准 |
 | **R4** | 设计稿 Items 把「噪音表 550」当商品卖；P0 §2.4 与 A9 要求 HUD **必须**显示噪音主要来源与方向 | **噪音 HUD 是系统基线，不是商品**；商店不卖 `noise_meter`。A9 的证据不能被「没买就看不到」破坏 | 卖 A9 的判据等于把验收项做成付费项 |
 | **R5** | 设计稿 Items 新增 11 件商品；P0 §2.5 的 4B 批次只有 4 件 | **4B 商店 = 4A 4 件 + 4 件**：自救针 120 / 急救包 200 / 工具带 700 / 体能训练 1200。设计稿其余 7 件（撬棍/拖车钩/投掷背带/信号棒/噪音表/加宽板/静音轮）随击杀与推车改件一起进 Post-P0 | 8 件是 P0 门票；多上的每一件都必须能被自动断言，否则就是假购买 |
 | **R6** | 设计稿提到角色差异与第四队友槽；P0 明确不做角色选择 | **Night1 继续 `traits=none`**；身份/缺点牌仍只在 Main / Supermarket 的 D8 路径生效。4A 的 T19（身份×牌×商品同轴只叠一次）继续留债 | 4B 重点是压力源，不是角色系统 |
@@ -76,9 +76,9 @@
 | 噪音 | HUD 显示等级/来源/方向；怪物本地听觉半径 4/10/16m | `NoiseBus` 记忆模型 | `NoiseNetworkState`、`NoiseHUD`、`AudibleAt` | **全局 70 不得直接触发全图怪**；无来源调查 = 0 |
 | 诅咒 | 笑面偶 / 无字牌位 | `GrabbableProp`、`NoiseBus` | 2 件 prefab + `CursedItem` + `CurseRuntime` | 同人最多 1 种生效；超出休眠并明示；未封印 60% 计价 |
 | 商店 | 补 4 件到 8 件 | `TeamAccount.TryPurchase`、`EquippedEffects` | 4 个 `ShopItem` + 4 个效果接线点 | 每件都能自动断言；消耗品按人计数 |
-| 三关梯度 | 12/14/16 锚点、0/1/2 诅咒、1/2/3 怪、1800/2400/2800 | `PropSpawnAnchor`、`LevelRouteService` | `legsMask` + `LegContentTable` | 配额从表读；比例必须 50–60% |
+| 三关梯度 | 12/14/16 锚点、0/1/2 诅咒、1/3/4 怪（追逐上限 2）、1800/2400/2800 | `PropSpawnAnchor`、`LevelRouteService` | `legsMask` + `LegContentTable` + `MonsterDirector` | 配额从表读；比例必须 50–60% |
 | 团灭 | 全队倒地 → 本趟结束、余额保留、货丢失 | `TeamAccount`、`LevelRouteService` | `TeamAccount.ServerEndRun` | 盘上余额逐位不变；进度与 cargo 清空 |
-| 性能 | 1 推车 + 40 物 + 2 怪 | `NetworkDiagnostics` | `S4BPerfTest` | ≥60fps@1080p、≤600kbps |
+| 性能 | 1 推车 + 40 物 + 4 怪（L3 满配） | `NetworkDiagnostics` | `S4BPerfTest` | ≥60fps@1080p、≤600kbps |
 
 ### 2.2 4B 明确不做（写死，防范围膨胀）
 
@@ -137,6 +137,7 @@
 | `Scripts/Monsters/MonsterVisual.cs` | MonoBehaviour | 客户端 | 占位胶囊染色、前兆脉冲、状态表现 |
 | `Scripts/Monsters/MonsterSpawnAnchor.cs` | MonoBehaviour | — | 场景摆位 |
 | `Scripts/Monsters/MonsterSpawner.cs` | MonoBehaviour（NM） | 服务端 | 按 `LegContentTable` 生成/清理怪物 |
+| `Scripts/Monsters/MonsterDirector.cs` | MonoBehaviour（NM） | 服务端 | 追逐预算：同屏最多 2 只处于 Chase，其余留在 Investigate/Patrol |
 | `Scripts/Combat/PlayerVitals.cs` | NetworkBehaviour | 服务端 | HP、倒地、无敌、自救、团灭输入 |
 | `Scripts/Combat/ReviveInteractor.cs` | NetworkBehaviour | 服务端 | 队友长按 E 4s 救援，进度 SyncVar |
 | `Scripts/Combat/TeamWipeDetector.cs` | MonoBehaviour（NM） | 服务端 | 全队倒地 → `ServerEndRun` |
@@ -272,7 +273,8 @@
 - **不得永久卡墙**：`MonsterNavigator` 连续 2s 位移 <0.05m 且处于 Chase/Patrol → 自动回退到最近 `PatrolAnchor`（打 `GATE_MON_UNSTICK rescued=self`）；连续两次仍失败 → `rescued=fail` 判失败。
 - **楼梯**：怪物使用 `CharacterController`（stepOffset 0.4），可直接走 12×0.25m 台阶；不要求怪物折叠推车。
 - **推车**：怪物可被推车推开/撞退，推车不会被怪物永久顶死；同辆车对同怪 0.8s 内只结算一次击退。
-- **生成表**：L1 空眼×1；L2 空眼×1 + 导购×1 + 尖啸罐×1；L3 空眼×2 + 导购×1 + 尖啸罐×1（同屏追逐 ≤2）。
+- **生成表**：L1 空眼×1；L2 空眼×1 + 导购×1 + 尖啸罐×1；L3 空眼×2 + 导购×1 + 尖啸罐×1。
+- **追逐预算（P0 §2.2「最多 2 只」）**：`MonsterDirector` 统一裁决，同屏最多 2 只怪物处于 `Chase`；第 3 只想追时保持 `Investigate` 并打 `GATE_MON_BUDGET denied=<id> active=2`。单人/双人仍是 1 只上限（`-players=1|2` 由人数决定，3–4 人才放到 2）。
 
 ### 4.4 诅咒（两件）
 
@@ -389,7 +391,7 @@
 
 ### Story S4B-2 · 噪音消费 + 空眼（第一只完整怪物）
 
-**范围**：`NoiseBus.AudibleAt`、`NoiseNetworkState`、`NoiseHud`、`MonsterProfile`、`MonsterState`、`MonsterBrain`、`HollowEyeBrain`、`MonsterSenses`、`MonsterNavigator`、`MonsterVisual`、`MonsterSpawnAnchor`、`MonsterSpawner`。
+**范围**：`NoiseBus.AudibleAt`、`NoiseNetworkState`、`NoiseHud`、`MonsterProfile`、`MonsterState`、`MonsterBrain`、`HollowEyeBrain`、`MonsterSenses`、`MonsterNavigator`、`MonsterVisual`、`MonsterSpawnAnchor`、`MonsterSpawner`、`MonsterDirector`。
 
 **完成定义**
 1. `-s4bnoise`：
@@ -434,7 +436,8 @@
    - 前摇内投掷任意物件 → 引爆：`NOISE_ADD source=scream_can_preempt amount=15`，无掉落。
    - 尖叫后最近的空眼进入 Investigate（`source=scream_can`），不是全图直接 Chase。
 3. `S4B_MON_OK monsters=3 states=7 unattributed=0`。
-4. 回归：4A 13 条全绿。
+4. 追逐预算：L3 同时存在 3 只追逐型（空眼×2 + 导购）时，同一时刻 `Chase` ≤2；第 3 只打 `GATE_MON_BUDGET denied=<id> active=2`；单人/双人上限 1。
+5. 回归：4A 13 条全绿。
 
 **测试钩子**：`-s4bgreeter` / `-s4bscream`
 
@@ -476,7 +479,7 @@
    - 余额单调不减；`legProgress` 每关归零；`dupBlocked≥1`。
    - `GATE_PROPS_MODE mode=p0leg`；不得出现 `legacy4a`。
 2. A4 在 P0 第 3 关配置下复跑：`-s4acart-a4 -p0props -leg=3` → 102kg、30m、卡死 <1.5s。
-3. `-s4bperf`：1 推车 + 40 活跃物 + 2 怪 → `S4B_PERF_OK fps>=60 kbps<=600`。
+3. `-s4bperf`：1 推车 + 40 活跃物 + 4 怪（L3 满配）→ `S4B_PERF_OK fps>=60 kbps<=600`。
 4. 工具带：手持 42kg 时按 G 把 ≤7kg 小件挂腰，负重仍计入；倒地自动掉落；`S4B_BELT_OK`。
 5. 体能：连续冲刺时长 ≥35%，`S4B_STAMINA_OK`。
 6. `ShopTerminal` 在 Night1 拒绝购买 `reason=wrong_scene`；`-s4a*` 进程跳过（4A 用例保绿）。
@@ -513,7 +516,7 @@
 | A9 噪音可归因 | 无来源调查 = 0 | ✅ | `-s4bnoise` + `GATE_MON_CHASE` |
 | A10 单关时长 | 8–12 分钟 | **只记录不判定**：`-s4bleg` 出机器人时长；真人留 A11 | `GATE_TIMER tag=leg_total` |
 | A11 真人体验 | ≥30 分钟、再走一关 ≥50% | ❌（4C） | 录像 + 访谈 |
-| A12 性能带宽 | ≥60fps、≤600kbps（含怪） | ✅ | `-s4bperf` |
+| A12 性能带宽 | ≥60fps、≤600kbps（含怪） | ✅ | `-s4bperf`（L3 满配：1 车 + 40 物 + 4 怪） |
 
 **结论口径**：`4B 覆盖 A3/A4/A5/A6/A7/A8/A9/A12 全量；A1/A2 自动化 3 关 + 真人待 4C；A10 只记录；A11 未覆盖`。
 不许把「自动化 3 关」写成 A1/A2 通过，也不许把 A10 的机器人时长当节奏证据。
@@ -632,6 +635,7 @@ run_regression_4b.bat
 | 团灭 | `GATE_WIPE legBefore= legAfter= balanceBefore= balanceAfter= cargoDestroyed=` | `balanceAfter==balanceBefore`；`legAfter==1` |
 | 怪物听觉 | `GATE_MON_HEARD monster= source= at= band= level= dist= attenuation=` | `attenuation>=0.2` 才触发 |
 | 怪物追猎 | `GATE_MON_CHASE monster= state=Chase source= at= band= level= dist=` | `source!=none` |
+| 追逐预算 | `GATE_MON_BUDGET denied=<id> active=<n> limit=<n>` | `active<=limit`；单/双人 `limit=1`，3–4 人 `limit=2` |
 | 怪物丢失 | `GATE_MON_LOST monster= seconds= searched=(true\|false)` | `seconds<=6` |
 | 怪物卡住 | `GATE_MON_UNSTICK monster= duration= where= rescued=(self\|fail)` | 不出现 `fail` |
 | 诅咒发笑 | `GATE_CURSE_LAUGH item= holder= interval= noise= active=<bool> dormant=<bool>` | 间隔 12–20s、`noise=8` |
@@ -643,7 +647,7 @@ run_regression_4b.bat
 | 性能 | `S4B_PERF_OK fps= kbps= props= carts= monsters=` | `fps>=60 && kbps<=600` |
 
 **命令行开关**：
-`-s4bvitals` / `-s4bdown` / `-s4bwipe` / `-s4bnoise` / `-s4bmon` / `-s4bgreeter` / `-s4bscream` / `-s4bcurse` / `-s4bshop8` / `-s4bleg` / `-s4blegclient` / `-s4bperf` / `-p0props` / `-leg=<n>` / `-savedir=<abs>` / `-feel=light`
+`-s4bvitals` / `-s4bdown` / `-s4bwipe` / `-s4bnoise` / `-s4bmon` / `-s4bgreeter` / `-s4bscream` / `-s4bcurse` / `-s4bshop8` / `-s4bleg` / `-s4blegclient` / `-s4bperf` / `-p0props` / `-leg=<n>` / `-players=<n>` / `-savedir=<abs>` / `-feel=light`
 
 ---
 
