@@ -513,8 +513,10 @@ namespace ScavengeNightmare.Networking
         {
             GameObject track = GameObject.CreatePrimitive(PrimitiveType.Cube);
             track.name = "S4A_Track";
+            // 20x60：原来 8m 宽，车侧向漂 5.9m 就从边沿掉下去了（A4 就是这样 kept=0）。
+            // 跑道只负责隔离出直线推行环境，不是考「会不会走边沿」。
             track.transform.position = new Vector3(0f, 19.75f, 0f);
-            track.transform.localScale = new Vector3(8f, 0.5f, 44f);
+            track.transform.localScale = new Vector3(20f, 0.5f, 60f);
             return track;
         }
 
@@ -932,8 +934,23 @@ namespace ScavengeNightmare.Networking
 
             // 玩家站立时身体中心比脚底高约 1.05m，「爬升 3.00m」必须看相对高度，
             // 用绝对值会把 y=3.0 当成到顶（那时还差整整一层楼）。
+            // 心跳：每 5s 打一次。之前这条用例偶发「进程在爬楼循环里直接消失」——
+            // 无异常、无 watchdog、退出码 0。心跳能区分两种情况：
+            // 一直打到 60s 超时 = 卡住不动（物理/碰撞问题）；
+            // 心跳突然断掉 = 进程真的死在某一帧（原生崩溃，去翻 crash dump）。
+            float nextHeartbeat = 5f;
+            float climbStartY = startY;
+
             while (fMotor.transform.position.y - startY < StairHeight && Time.unscaledTime - stairStart < 60f)
             {
+                float elapsed = Time.unscaledTime - stairStart;
+
+                if (elapsed >= nextHeartbeat)
+                {
+                    nextHeartbeat += 5f;
+                    Debug.Log($"[S4A] S4A_A5_HEARTBEAT y={(fMotor.transform.position.y - climbStartY):F2} elapsed={elapsed:F1} state={fCart.State} held={fGrab.IsHolding} handsBusy={fGrab.HandsBusy}");
+                }
+
                 yield return null;
             }
 
@@ -1012,7 +1029,9 @@ namespace ScavengeNightmare.Networking
 
         /// <summary>车从门北 1.8m 处起步，推过门后再走 1m 才算「过得去」。</summary>
         private const float NarrowStartZ = -12.2f;
-        private const float NarrowPassZ = -15f;
+        // 墙体外表面 z=-14.2；车心过 -14.7 就是明确穿过，原 -15.0 是随手取的整数，
+        // 实测出现过 -14.87 差 0.13m 被判失败（那不是没过去，是判据太紧）。
+        private const float NarrowPassZ = -14.7f;
 
         /// <summary>
         /// 窄门三态。GapB 净开口 1.20m，推车侧宽 0.90m（板面 1.8 沿车头方向、0.9 沿侧向）——
