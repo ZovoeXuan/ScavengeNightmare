@@ -29,6 +29,9 @@ namespace ScavengeNightmare.Cart
         public float capacityToleranceKg = 0.5f;
         [Tooltip("件数上限 6（P0 §2.1）。与载重是两个独立闸门，先撞哪个算哪个")]
         public int maxItems = 6;
+        [Tooltip("同板最重与最轻的质量比上限。1kg 配 42kg（42:1）实测必被接触求解弹飞，"
+               + "与其装上去再掉，不如直接拒绝并给明确原因")]
+        public float maxMassRatio = 20f;
         [Tooltip("180kg 起提示「随时可能翻」，但不禁止放货")]
         public float overloadWarnKg = 180f;
 

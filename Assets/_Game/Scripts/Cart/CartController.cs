@@ -25,6 +25,18 @@ namespace ScavengeNightmare.Cart
 
         public static CartController Instance { get; private set; }
 
+        /// <summary>
+        /// 成功装货的累计次数。A3「徒手搬运」的唯一硬判据：徒手搬一件货前后这个数必须不变。
+        /// 不靠抓日志（帧序不稳、抓取时机容易错），计数器是确定性判据。
+        /// </summary>
+        public static int LoadEventCount { get; private set; }
+
+        /// <summary>「有货时尝试折叠」被拒的累计次数。窄门用例据此断言 hint=unload 那条规则真的生效。</summary>
+        public static int FoldRejectCount { get; private set; }
+
+        /// <summary>「同板质量比超限」被拒的累计次数。质量比闸门不能只写在代码里，必须有负向用例打穿它。</summary>
+        public static int MassRatioRejectCount { get; private set; }
+
         [SerializeField] private CartProfile profile;
         [Tooltip("玩家进入推行状态的把手距离")]
         [SerializeField] private float handleReach = 1.6f;
@@ -52,6 +64,13 @@ namespace ScavengeNightmare.Cart
 
         private readonly Dictionary<PlayerMotor, bool> holdPrev = new();
         private readonly Dictionary<PlayerMotor, float> holdTime = new();
+
+        /// <summary>
+        /// 每件货在**装载瞬间**占用的半宽。布局必须用它而不是实时包围盒：
+        /// 货落板后会转、会倾斜，实时包围盒会越量越大（实测 0.265 → 0.47），
+        /// 结果第三件被误判 deck_full，明明 1.8m 板面塞得下 0.53+0.50+0.44。
+        /// </summary>
+        private readonly Dictionary<GrabbableProp, float> loadHalfWidth = new();
 
         private float stallWindowTimer;
         private Vector3 stallAnchor;
@@ -235,7 +254,11 @@ namespace ScavengeNightmare.Cart
 
             body.velocity = new Vector3(desired.x, body.velocity.y, desired.z);
 
-            Quaternion want = Quaternion.Euler(0f, player.transform.eulerAngles.y, 0f);
+            // 车头必须朝玩家前方。车体长轴是 local +X（板面 1.8 沿 X、0.9 沿 Z），
+            // 玩家 yaw=ψ 时车 yaw 取 ψ-90，local +X 才指向 ψ 方向。
+            // 之前直接取 ψ，车是「横着走」的：侧向宽度变成 1.8m，任何 1.2m 窄门都过不去，
+            // 视觉上货也是横着摆在车上、把手飘在车侧外面。
+            Quaternion want = Quaternion.Euler(0f, player.transform.eulerAngles.y - 90f, 0f);
             body.MoveRotation(Quaternion.Slerp(body.rotation, want, Mathf.Clamp01(yawLerp * dt)));
         }
 
@@ -264,7 +287,7 @@ namespace ScavengeNightmare.Cart
                              + Vector3.up * carriedHoldHeight;
 
             body.MovePosition(Vector3.Lerp(body.position, target, Mathf.Clamp01(12f * dt)));
-            body.MoveRotation(Quaternion.Slerp(body.rotation, Quaternion.Euler(0f, carrier.transform.eulerAngles.y, 0f), Mathf.Clamp01(10f * dt)));
+            body.MoveRotation(Quaternion.Slerp(body.rotation, Quaternion.Euler(0f, carrier.transform.eulerAngles.y - 90f, 0f), Mathf.Clamp01(10f * dt)));
         }
 
         private void EmitNoise(float dt)
@@ -451,11 +474,11 @@ namespace ScavengeNightmare.Cart
                 return;
             }
 
-            // 先按货物**实际包围盒**算落点，放不下就直接拒绝。
-            // 装上去再被挤下来（实测 60kg 保险箱落位后把 1kg 玻璃顶到车前 1.85m）
-            // 比拒绝难排查得多，对玩家也更困惑：明明显示装上了，一推车东西掉一地。
-            float halfLen = profile.deckLength * 0.5f;
-            float cursor = -halfLen;
+            // 同板质量比闸门：1kg 配 42kg 是 42:1，接触求解会在一次物理步内把轻件弹飞出板。
+            // 与其「装上去、一推行掉一地」，不如当场拒绝并给玩家一个能理解的原因。
+            // 判定放在 deck_full 之前：空间够但质量比不成立时，玩家该看到的是 mass_ratio 而不是 deck_full。
+            float minMass = prop.Mass;
+            float maxMass = prop.Mass;
 
             foreach (GrabbableProp item in cargo.Items)
             {
@@ -464,7 +487,34 @@ namespace ScavengeNightmare.Cart
                     continue;
                 }
 
-                cursor += HalfWidth(item) * 2f + 0.04f;
+                minMass = Mathf.Min(minMass, item.Mass);
+                maxMass = Mathf.Max(maxMass, item.Mass);
+            }
+
+            if (minMass > 0.01f && maxMass / minMass > profile.maxMassRatio)
+            {
+                MassRatioRejectCount++;
+                string ratioId = prop.Profile != null ? prop.Profile.id : "?";
+                Debug.Log($"[S4A] S4A_CART_LOAD_REJECT reason=mass_ratio id={ratioId} mass={prop.Mass:F1} min={minMass:F1} max={maxMass:F1} ratio={maxMass / minMass:F1} limit={profile.maxMassRatio:F0}");
+                return;
+            }
+
+            // 先按货物**实际包围盒**算落点，放不下就直接拒绝。
+            // 装上去再被挤下来（实测 60kg 保险箱落位后把 1kg 玻璃顶到车前 1.85m）
+            // 比拒绝难排查得多，对玩家也更困惑：明明显示装上了，一推车东西掉一地。
+            float halfLen = profile.deckLength * 0.5f;
+            float cursor = -halfLen;
+
+            PruneLoadWidths();
+
+            foreach (GrabbableProp item in cargo.Items)
+            {
+                if (item == null)
+                {
+                    continue;
+                }
+
+                cursor += HalfWidthAtLoad(item) * 2f + 0.04f;
             }
 
             float myHalf = HalfWidth(prop);
@@ -482,6 +532,9 @@ namespace ScavengeNightmare.Cart
                 Debug.Log($"[S4A] S4A_CART_LOAD_REJECT reason={reason} mass={prop.Mass:F1} count={cargo.Count}");
                 return;
             }
+
+            LoadEventCount++;
+            loadHalfWidth[prop] = myHalf;
 
             grab.Release(false);
 
@@ -541,12 +594,69 @@ namespace ScavengeNightmare.Cart
             return Mathf.Max(size.x, size.z) * 0.5f;
         }
 
+        /// <summary>布局用半宽：优先用装载瞬间记下的值，没有记录（理论上不该发生）才回落实时测量。</summary>
+        private float HalfWidthAtLoad(GrabbableProp prop)
+        {
+            if (prop != null && loadHalfWidth.TryGetValue(prop, out float width))
+            {
+                return width;
+            }
+
+            return HalfWidth(prop);
+        }
+
+        private bool ContainsItem(GrabbableProp prop)
+        {
+            IReadOnlyList<GrabbableProp> items = cargo.Items;
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                if (items[i] == prop)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>清掉已经不在板上的尺寸记录（掉落、卸货、整车提交都会让记录变幽灵）。</summary>
+        private void PruneLoadWidths()
+        {
+            if (loadHalfWidth.Count == 0)
+            {
+                return;
+            }
+
+            List<GrabbableProp> stale = null;
+
+            foreach (GrabbableProp key in loadHalfWidth.Keys)
+            {
+                if (key == null || !ContainsItem(key))
+                {
+                    stale ??= new List<GrabbableProp>();
+                    stale.Add(key);
+                }
+            }
+
+            if (stale == null)
+            {
+                return;
+            }
+
+            foreach (GrabbableProp key in stale)
+            {
+                loadHalfWidth.Remove(key);
+            }
+        }
+
         private void ToggleFold(PlayerMotor motor, GrabController grab)
         {
             if (State == CartState.Deployed)
             {
                 if (cargo.Count > 0)
                 {
+                    FoldRejectCount++;
                     Debug.Log($"[S4A] S4A_CART_FOLD_REJECT reason=has_cargo count={cargo.Count} hint=unload_first");
                     return;
                 }

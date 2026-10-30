@@ -26,6 +26,9 @@ namespace ScavengeNightmare.Networking
         private bool a4Mode;
         private bool a5Mode;
         private bool noiseMode;
+        private bool narrowMode;
+        private bool heavyMode;
+        private bool ratioMode;
         private int failures;
 
         /// <summary>Night1 的楼梯：12 级 × 0.25m，顶部正好 3.00m（通向夹层）。</summary>
@@ -84,8 +87,11 @@ namespace ScavengeNightmare.Networking
             a4Mode = S4ACli.Has("-s4acart-a4");
             a5Mode = S4ACli.Has("-s4acart-a5");
             noiseMode = S4ACli.Has("-s4acart-noise");
+            narrowMode = S4ACli.Has("-s4acart-narrow");
+            heavyMode = S4ACli.Has("-s4acart-heavy");
+            ratioMode = S4ACli.Has("-s4acart-ratio");
 
-            if (!enabledTest && !a4Mode && !a5Mode && !noiseMode)
+            if (!enabledTest && !a4Mode && !a5Mode && !noiseMode && !narrowMode && !heavyMode && !ratioMode)
             {
                 this.enabled = false;
                 return;
@@ -119,7 +125,7 @@ namespace ScavengeNightmare.Networking
                 }
             }
 
-            StartCoroutine(Watchdog(a4Mode || a5Mode ? 240 : 150));
+            StartCoroutine(Watchdog(narrowMode ? 300 : (heavyMode || ratioMode ? 200 : (a4Mode || a5Mode ? 240 : 150))));
 
             try
             {
@@ -132,7 +138,19 @@ namespace ScavengeNightmare.Networking
                 return;
             }
 
-            StartCoroutine(noiseMode ? RunNoise() : (a4Mode ? RunA4() : (a5Mode ? RunA5() : Run())));
+            StartCoroutine(noiseMode
+                ? RunNoise()
+                : a4Mode
+                    ? RunA4()
+                    : a5Mode
+                        ? RunA5()
+                        : narrowMode
+                            ? RunNarrow()
+                            : heavyMode
+                                ? RunHeavy()
+                                : ratioMode
+                                    ? RunRatio()
+                                    : Run());
         }
 
         private void Fail(string reason)
@@ -300,11 +318,9 @@ namespace ScavengeNightmare.Networking
             bool clean = failures == 0;
             Debug.Log($"[S4A] S4A_CART_OK count={targets.Count} mass={cart.LoadKg + 0f:F1} push={pushed:F2}m submitted={submitted} failures={failures} ok={clean}");
 
-            if (clean)
-            {
-                Debug.Log($"[S4A] GATE_HEAVY_MANUAL cargoId=- mass=- via_cart=False note=see_dedicated_case");
-            }
-            else
+            // 这里不再打 GATE_HEAVY_MANUAL：占位行（cargoId=-）会被 A3 的判据脚本当成一条真记录。
+            // A3 的唯一判据源在 -s4acart-heavy（徒手搬 cabinet 到公秤，计数器证 never-on-cart）。
+            if (!clean)
             {
                 Debug.LogError($"[S4A] S4A_CART_FAIL failures={failures}");
             }
@@ -899,6 +915,549 @@ namespace ScavengeNightmare.Networking
 
             yield return new WaitForSeconds(0.3f);
             Application.Quit(clean ? 0 : 1);
+        }
+
+        // ==================== 窄门三态 / 徒手搬重货 ====================
+
+        /// <summary>GapB 中心 (0,1,-14)，两侧墙净开口 x∈[-0.6,0.6]=1.20m，墙厚 0.40m。</summary>
+        private const float NarrowGapZ = -14f;
+
+        /// <summary>车从门北 1.8m 处起步，推过门后再走 1m 才算「过得去」。</summary>
+        private const float NarrowStartZ = -12.2f;
+        private const float NarrowPassZ = -15f;
+
+        /// <summary>
+        /// 窄门三态。GapB 净开口 1.20m，推车侧宽 0.90m（板面 1.8 沿车头方向、0.9 沿侧向）——
+        /// 所以**载货车物理上过得去**，把「载货必被门挡住」写成硬断言只会得到一个假通过。
+        /// 这里断言三条真不变量：
+        ///   1) empty  空车推过去，车确实到门南侧
+        ///   2) loaded 载两件推过去，车过门且一件不掉（货沿板长布列，不增加侧向宽度）
+        ///   3) folded 载货时折叠被拒（hint=unload_first），卸空折叠后抱着走过去
+        /// 第 3 条才是「窄门 → 必须卸货折叠」这条玩法规则的真正落点。
+        /// </summary>
+        private IEnumerator RunNarrow()
+        {
+            yield return Boot();
+
+            if (failures > 0)
+            {
+                Debug.LogError($"[S4A] S4A_CART_NARROW_FAIL phase=boot failures={failures}");
+                Application.Quit(1);
+                yield break;
+            }
+
+            float deckWidth = fCart.Profile.deckWidth;
+
+            // ---------- 态 1：空车 ----------
+            fCart.TeleportWithCargo(new Vector3(0f, 0.35f, NarrowStartZ));
+            yield return new WaitForSeconds(0.6f);
+
+            yield return PushCartToward(fMotor, fCart, new Vector3(0f, 1.05f, NarrowStartZ + 1.4f), NarrowPassZ, 10f);
+
+            float zEmpty = fCart.transform.position.z;
+            bool passedEmpty = zEmpty <= NarrowPassZ;
+            Debug.Log($"[S4A] S4A_CART_NARROWDOOR mode=empty passed={passedEmpty} z={zEmpty:F2} deckWidth={deckWidth:F2} gap=1.20");
+
+            if (!passedEmpty)
+            {
+                Fail($"narrow_empty_blocked z={zEmpty:F2} target<={NarrowPassZ:F2}");
+            }
+
+            if (fCart.ItemCount != 0)
+            {
+                Fail($"narrow_empty_has_cargo count={fCart.ItemCount}");
+            }
+
+            // ---------- 态 2：载货 ----------
+            List<GrabbableProp> pool = CollectProps();
+            List<GrabbableProp> targets = new();
+
+            // 重的先装：42kg 先落位，轻件再放上去冲击小（与 -s4acart 同一口径）
+            TryPickByMass(pool, targets, 42f, 6f);
+
+            foreach (GrabbableProp prop in pool)
+            {
+                if (targets.Count >= 2)
+                {
+                    break;
+                }
+
+                if (prop != null && prop.Mass >= 3f && prop.Mass <= 15f && !targets.Contains(prop))
+                {
+                    targets.Add(prop);
+                }
+            }
+
+            if (targets.Count < 2)
+            {
+                Fail($"narrow_targets_insufficient count={targets.Count}");
+                Application.Quit(1);
+                yield break;
+            }
+
+            yield return LoadSequence(targets);
+
+            float loadedMass = fCart.LoadKg;
+            int countBeforePush = fCart.ItemCount;
+            Debug.Log($"[S4A] S4A_CART_NARROWDOOR_LOADED count={countBeforePush} mass={loadedMass:F1} ratio_limit={fCart.Profile.maxMassRatio:F0} ids={fCart.Cargo.IdsJoined()}");
+
+            if (countBeforePush != targets.Count)
+            {
+                Fail($"narrow_load_count expected={targets.Count} actual={countBeforePush}");
+            }
+
+            fCart.TeleportWithCargo(new Vector3(0f, 0.35f, NarrowStartZ));
+            yield return new WaitForSeconds(0.8f);
+
+            yield return PushCartToward(fMotor, fCart, new Vector3(0f, 1.05f, NarrowStartZ + 1.4f), NarrowPassZ, 12f);
+
+            float zLoaded = fCart.transform.position.z;
+            int lost = countBeforePush - fCart.ItemCount;
+            bool passedLoaded = zLoaded <= NarrowPassZ;
+
+            // ---------- 态 2b：载货时折叠必须被拒 ----------
+            int rejectBefore = CartController.FoldRejectCount;
+            Teleport(fMotor.transform, new Vector3(0f, 1.05f, zLoaded + 1.3f));
+            fMotor.transform.LookAt(new Vector3(0f, 1.05f, zLoaded));
+            yield return new WaitForSeconds(0.4f);
+            yield return PressInteract();
+
+            bool foldRejected = CartController.FoldRejectCount > rejectBefore
+                                && fCart.State == CartController.CartState.Deployed;
+
+            Debug.Log($"[S4A] S4A_CART_NARROWDOOR mode=loaded passed={passedLoaded} z={zLoaded:F2} lost={lost} blocked_fold={foldRejected} hint=unload");
+
+            if (!passedLoaded)
+            {
+                Fail($"narrow_loaded_blocked z={zLoaded:F2} target<={NarrowPassZ:F2}");
+            }
+
+            if (lost != 0)
+            {
+                Fail($"narrow_cargo_lost lost={lost} kept={fCart.ItemCount}/{countBeforePush}");
+            }
+
+            if (!foldRejected)
+            {
+                Fail($"narrow_fold_not_rejected state={fCart.State} rejects={CartController.FoldRejectCount - rejectBefore}");
+            }
+
+            // ---------- 态 3：卸空 → 折叠 → 抱过去 ----------
+            fCart.UnloadAll();
+            yield return new WaitForSeconds(0.4f);
+
+            // 卸下来的货还压在车上，挪开再折叠，否则车被顶住抬不起来
+            foreach (GrabbableProp prop in pool)
+            {
+                if (prop == null || prop.Body == null)
+                {
+                    continue;
+                }
+
+                if (Vector3.Distance(prop.transform.position, fCart.transform.position) < 2.5f)
+                {
+                    Teleport(prop.transform, new Vector3(3f, 0.6f, NarrowStartZ + 1f));
+                    prop.Body.velocity = Vector3.zero;
+                }
+            }
+
+            Physics.SyncTransforms();
+            yield return new WaitForSeconds(0.3f);
+
+            Teleport(fMotor.transform, new Vector3(0f, 1.05f, zLoaded + 1.3f));
+            fMotor.transform.LookAt(new Vector3(0f, 1.05f, zLoaded));
+            yield return new WaitForSeconds(0.3f);
+            yield return PressInteract();
+
+            bool folded = fCart.State == CartController.CartState.Carried;
+            Debug.Log($"[S4A] S4A_CART_NARROWDOOR_FOLD state={fCart.State} folded={folded} count={fCart.ItemCount}");
+
+            if (!folded)
+            {
+                Fail($"narrow_fold_failed state={fCart.State} remaining={fCart.ItemCount}");
+            }
+
+            // 抱车回门北，让车跟过来（Carried 是跟随插值，传送玩家后车会在 ~0.3s 内追上）
+            Teleport(fMotor.transform, new Vector3(0f, 1.05f, NarrowStartZ - 0.2f));
+            fMotor.transform.LookAt(new Vector3(0f, 1.05f, NarrowPassZ - 5f));
+            yield return new WaitForSeconds(0.8f);
+
+            fMotor.ApplyAutomationMove(new Vector2(0f, 1f), false);
+
+            float t = 0f;
+            while (fMotor.transform.position.z > NarrowPassZ - 0.2f && t < 10f)
+            {
+                t += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            fMotor.ClearAutomationMove();
+            yield return new WaitForSeconds(0.3f);
+
+            float zFolded = fMotor.transform.position.z;
+            bool passedFolded = zFolded <= NarrowPassZ - 0.2f && fCart.State == CartController.CartState.Carried;
+
+            Debug.Log($"[S4A] S4A_CART_NARROWDOOR mode=folded passed={passedFolded} playerZ={zFolded:F2} state={fCart.State}");
+
+            if (!passedFolded)
+            {
+                Fail($"narrow_folded_blocked playerZ={zFolded:F2} state={fCart.State}");
+            }
+
+            bool clean = failures == 0;
+            Debug.Log($"[S4A] S4A_CART_NARROWDOOR_OK empty=1 loaded=1 folded={(folded ? 1 : 0)} lost={lost} foldRejected={(foldRejected ? 1 : 0)} ok={clean}");
+
+            if (!clean)
+            {
+                Debug.LogError($"[S4A] S4A_CART_NARROW_FAIL failures={failures}");
+            }
+
+            yield return new WaitForSeconds(0.3f);
+            Application.Quit(clean ? 0 : 1);
+        }
+
+        /// <summary>
+        /// 把玩家摆到车后，按住左键沿 -Z 推到车尾越过 targetZ 或超时。
+        /// 站位固定用世界 -Z，不按车当前朝向反推——车朝向由出发姿态决定，反推会让结果不可复现。
+        /// </summary>
+        private IEnumerator PushCartToward(PlayerMotor motor, CartController cart, Vector3 playerStart, float targetZ, float timeout)
+        {
+            Teleport(motor.transform, playerStart);
+            motor.transform.LookAt(new Vector3(playerStart.x, playerStart.y, playerStart.z - 6f));
+            yield return new WaitForSeconds(0.5f);
+
+            S4AInput.AutoGrab = true;
+            motor.ApplyAutomationMove(new Vector2(0f, 1f), false);
+
+            float t = 0f;
+            while (cart.transform.position.z > targetZ && t < timeout)
+            {
+                t += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            motor.ClearAutomationMove();
+            S4AInput.AutoGrab = false;
+            yield return new WaitForSeconds(0.3f);
+
+            Debug.Log($"[S4A] S4A_CART_PUSH_STEP targetZ={targetZ:F2} actualZ={cart.transform.position.z:F2} yaw={cart.transform.eulerAngles.y:F1} seconds={t:F1}");
+        }
+
+        /// <summary>
+        /// A3 唯一判据源：35kg 大衣柜**徒手**搬到公秤入账，全程不得上过车。
+        /// 判据用 <see cref="CartController.LoadEventCount"/> 计数器而不是抓日志——
+        /// 日志受帧序影响，「没抓到」和「没发生」分不开，计数器是确定性的。
+        /// </summary>
+        private IEnumerator RunHeavy()
+        {
+            yield return Boot();
+
+            if (failures > 0)
+            {
+                Debug.LogError($"[S4A] S4A_CART_HEAVY_FAIL phase=boot failures={failures}");
+                Application.Quit(1);
+                yield break;
+            }
+
+            // Night1 的锚点表里 cabinet 恰好一个，找不到就是场景被改坏了，不能当成 skip
+            GrabbableProp cabinet = null;
+            foreach (GrabbableProp prop in CollectProps())
+            {
+                if (prop != null && prop.Profile != null
+                    && string.Equals(prop.Profile.id, "cabinet", System.StringComparison.Ordinal))
+                {
+                    cabinet = prop;
+                    break;
+                }
+            }
+
+            if (cabinet == null)
+            {
+                Fail("heavy_no_cabinet");
+                Application.Quit(1);
+                yield break;
+            }
+
+            float mass = cabinet.Mass;
+            long value = cabinet.CurrentValue;
+            long balanceBefore = fAccount.Balance;
+            int loadEventsBefore = CartController.LoadEventCount;
+
+            Debug.Log($"[S4A] S4A_CART_HEAVY_PICK id={cabinet.Profile.id} mass={mass:F1} value={value} balance={balanceBefore}");
+
+            // 站到店内空地上（z=-9 一带是货架与后墙之间的空场），柜子由 GrabProp 摆到身前
+            Teleport(fMotor.transform, new Vector3(0f, 1.05f, -9f));
+            fMotor.transform.LookAt(new Vector3(0f, 1.05f, -12f));
+            yield return new WaitForSeconds(0.4f);
+
+            yield return GrabProp(fMotor, fGrab, cabinet);
+
+            if (!fGrab.IsHolding)
+            {
+                Fail($"heavy_grab_failed mass={mass:F1}");
+                Application.Quit(1);
+                yield break;
+            }
+
+            // 徒手走 3m：证明它真的挂在手上跟随，而不是被瞬移过去的
+            fMotor.ApplyAutomationMove(new Vector2(0f, 1f), false);
+
+            float t = 0f;
+            while (fMotor.transform.position.z > -12f && t < 8f)
+            {
+                t += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            fMotor.ClearAutomationMove();
+            yield return new WaitForSeconds(0.2f);
+
+            bool stillHeld = fGrab.IsHolding;
+            float carriedZ = fMotor.transform.position.z;
+            Debug.Log($"[S4A] S4A_CART_HEAVY_WALK distance={(-9f - carriedZ):F2} held={stillHeld} seconds={t:F1}");
+
+            if (!stillHeld)
+            {
+                Fail("heavy_lost_hold_while_walking");
+                Application.Quit(1);
+                yield break;
+            }
+
+            // 走到公秤：连人带货一起挪（只挪人不挪货会立刻触发 breakDistance 判脱手）
+            yield return MoveWithHeld(fMotor, fGrab, new Vector3(0f, 1.05f, -15.2f), new Vector3(0f, 1.05f, -16.6f));
+            yield return new WaitForSeconds(0.4f);
+
+            bool heldAtTerminal = fGrab.IsHolding;
+            Debug.Log($"[S4A] S4A_CART_HEAVY_AT_TERMINAL held={heldAtTerminal} playerZ={fMotor.transform.position.z:F2}");
+
+            S4AInput.AutoInteract = true;
+            yield return WaitFor(() => fAccount.Balance > balanceBefore, 8f, "heavy_deposit_timeout");
+            S4AInput.AutoInteract = false;
+            yield return new WaitForSeconds(0.4f);
+
+            long gained = fAccount.Balance - balanceBefore;
+            int loadEventsAfter = CartController.LoadEventCount;
+            bool neverOnCart = loadEventsAfter == loadEventsBefore;
+
+            Debug.Log($"[S4A] GATE_HEAVY_MANUAL cargoId=cabinet mass={mass:F1} via_cart=False");
+            Debug.Log($"[S4A] S4A_CART_HEAVY_RESULT gained={gained} expected={value} cartLoads={loadEventsAfter - loadEventsBefore} cartItems={fCart.ItemCount}");
+
+            if (gained != value)
+            {
+                Fail($"heavy_deposit_value expected={value} actual={gained}");
+            }
+
+            if (!neverOnCart)
+            {
+                Fail($"heavy_went_through_cart loads={loadEventsAfter - loadEventsBefore}");
+            }
+
+            if (fCart.ItemCount != 0)
+            {
+                Fail($"heavy_cart_not_empty count={fCart.ItemCount}");
+            }
+
+            if (mass < 35f)
+            {
+                Fail($"heavy_mass_below_threshold mass={mass:F1} limit=35");
+            }
+
+            bool clean = failures == 0;
+            Debug.Log($"[S4A] S4A_CART_HEAVY_OK cargoId=cabinet mass={mass:F1} balanceBefore={balanceBefore} balanceAfter={fAccount.Balance} gained={gained} viaCart=False ok={clean}");
+
+            if (!clean)
+            {
+                Debug.LogError($"[S4A] S4A_CART_HEAVY_FAIL failures={failures}");
+            }
+
+            yield return new WaitForSeconds(0.3f);
+            Application.Quit(clean ? 0 : 1);
+        }
+
+        /// <summary>
+        /// 同板质量比闸门的正负向用例。1kg 配 42kg 是 42:1，接触求解必把轻件弹出板外，
+        /// 与其「装上去、一推行掉一地」，不如当场拒绝。但闸门写死在代码里没人打穿它，
+        /// 就等于没有闸门——所以这里必须同时验「该拒的拒」和「该收的收」。
+        /// </summary>
+        private IEnumerator RunRatio()
+        {
+            yield return Boot();
+
+            if (failures > 0)
+            {
+                Debug.LogError($"[S4A] S4A_CART_RATIO_FAIL phase=boot failures={failures}");
+                Application.Quit(1);
+                yield break;
+            }
+
+            float limit = fCart.Profile.maxMassRatio;
+            List<GrabbableProp> pool = CollectProps();
+
+            GrabbableProp heavy = null;
+            GrabbableProp tiny = null;
+            GrabbableProp medium = null;
+
+            foreach (GrabbableProp prop in pool)
+            {
+                if (prop == null)
+                {
+                    continue;
+                }
+
+                if (heavy == null && Mathf.Abs(prop.Mass - 42f) <= 6f)
+                {
+                    heavy = prop;
+                    continue;
+                }
+
+                if (prop.Mass <= 2f && (tiny == null || prop.Mass < tiny.Mass))
+                {
+                    tiny = prop;
+                }
+
+                if (prop.Mass >= 4f && prop.Mass <= 12f && medium == null)
+                {
+                    medium = prop;
+                }
+            }
+
+            if (heavy == null || tiny == null || medium == null)
+            {
+                Fail($"ratio_pool_insufficient heavy={(heavy != null)} tiny={(tiny != null)} medium={(medium != null)}");
+                Application.Quit(1);
+                yield break;
+            }
+
+            // 先把 42kg 单独放上去
+            yield return LoadSequence(new List<GrabbableProp> { heavy });
+
+            if (fCart.ItemCount != 1)
+            {
+                Fail($"ratio_heavy_load_failed count={fCart.ItemCount}");
+                Application.Quit(1);
+                yield break;
+            }
+
+            // ---- 负向：1kg 轻件必须被拒 ----
+            int rejectBefore = CartController.MassRatioRejectCount;
+            int countBefore = fCart.ItemCount;
+
+            yield return StandAndGrab(tiny);
+
+            if (!fGrab.IsHolding)
+            {
+                Fail($"ratio_tiny_grab_failed id={tiny.Profile.id}");
+            }
+            else
+            {
+                S4AInput.AutoInteract = true;
+                yield return new WaitForSeconds(0.8f);
+                S4AInput.AutoInteract = false;
+                yield return new WaitForSeconds(0.3f);
+            }
+
+            int rejects = CartController.MassRatioRejectCount - rejectBefore;
+            bool rejected = rejects > 0 && fCart.ItemCount == countBefore;
+            Debug.Log($"[S4A] S4A_CART_RATIO_REJECT tiny={tiny.Profile.id} mass={tiny.Mass:F1} heavy={heavy.Mass:F1} limit={limit:F0} rejects={rejects} rejected={rejected}");
+
+            if (!rejected)
+            {
+                Fail($"ratio_not_rejected rejects={rejects} count={fCart.ItemCount} expected={countBefore}");
+            }
+
+            // ---- 正向：9kg 中件必须收下（闸门不能把正常组合也挡了）----
+            if (fGrab.IsHolding)
+            {
+                fGrab.Release(false);
+                yield return new WaitForSeconds(0.3f);
+            }
+
+            int countBeforeAccept = fCart.ItemCount;
+            yield return StandAndGrab(medium);
+
+            if (!fGrab.IsHolding)
+            {
+                Fail($"ratio_medium_grab_failed id={medium.Profile.id}");
+            }
+            else
+            {
+                S4AInput.AutoInteract = true;
+                yield return WaitFor(() => fCart.ItemCount > countBeforeAccept, 5f, "ratio_medium_load_timeout");
+                S4AInput.AutoInteract = false;
+                yield return new WaitForSeconds(0.3f);
+            }
+
+            bool accepted = fCart.ItemCount == countBeforeAccept + 1;
+            float ratio = medium.Mass > 0.01f ? heavy.Mass / medium.Mass : 0f;
+
+            Debug.Log($"[S4A] S4A_CART_RATIO_ACCEPT medium={medium.Profile.id} mass={medium.Mass:F1} ratio={ratio:F1} limit={limit:F0} accepted={accepted}");
+
+            if (!accepted)
+            {
+                Fail($"ratio_valid_combo_rejected count={fCart.ItemCount} expected={countBeforeAccept + 1}");
+            }
+
+            bool clean = failures == 0;
+            Debug.Log($"[S4A] S4A_CART_RATIO_OK rejected={rejected} accepted={accepted} rejectId={tiny.Profile.id} acceptId={medium.Profile.id} limit={limit:F0} ok={clean}");
+
+            if (!clean)
+            {
+                Debug.LogError($"[S4A] S4A_CART_RATIO_FAIL failures={failures}");
+            }
+
+            yield return new WaitForSeconds(0.3f);
+            Application.Quit(clean ? 0 : 1);
+        }
+
+        /// <summary>站到车侧 → 抓货 → 转身朝车 → 对位。装货前的固定四步，多处复用。</summary>
+        private IEnumerator StandAndGrab(GrabbableProp prop)
+        {
+            Vector3 stand = fCart.transform.position + Vector3.back * 1.3f;
+            stand.y = 1.05f;
+
+            Vector3 away = (stand - fCart.transform.position).normalized;
+            away.y = 0f;
+
+            Teleport(fMotor.transform, stand);
+            fMotor.transform.LookAt(new Vector3(stand.x + away.x * 2f, stand.y, stand.z + away.z * 2f));
+            yield return new WaitForSeconds(0.3f);
+
+            yield return GrabProp(fMotor, fGrab, prop);
+
+            if (!fGrab.IsHolding)
+            {
+                yield break;
+            }
+
+            yield return TurnTo(fMotor, fGrab, fCart.transform.position);
+            yield return new WaitForSeconds(0.3f);
+
+            Vector3 loadStand = fCart.transform.position + Vector3.back * 1.25f;
+            loadStand.y = 1.05f;
+            Teleport(fMotor.transform, loadStand);
+            fMotor.transform.LookAt(new Vector3(fCart.transform.position.x, loadStand.y, fCart.transform.position.z));
+            yield return new WaitForSeconds(0.25f);
+        }
+
+        /// <summary>连人带手持物一起挪到指定点位并按给定朝向站好。</summary>
+        private IEnumerator MoveWithHeld(PlayerMotor motor, GrabController grab, Vector3 position, Vector3 lookAt)
+        {
+            Teleport(motor.transform, position);
+            motor.transform.LookAt(new Vector3(lookAt.x, position.y, lookAt.z));
+
+            GrabbableProp held = grab.HeldProp;
+            if (held != null && held.Body != null)
+            {
+                float holdDist = FeelSettings.HoldDistance(held.Profile.holdDistance);
+                Vector3 holdPos = motor.transform.position + motor.transform.forward * holdDist + new Vector3(0f, 0.45f, 0f);
+                Vector3 comOffset = held.Body.worldCenterOfMass - held.transform.position;
+                Teleport(held.transform, holdPos - comOffset);
+                held.Body.velocity = Vector3.zero;
+                held.Body.angularVelocity = Vector3.zero;
+                Physics.SyncTransforms();
+            }
+
+            yield return null;
         }
 
         private static string JoinMasses(List<GrabbableProp> props)

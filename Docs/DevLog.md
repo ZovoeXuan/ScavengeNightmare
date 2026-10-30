@@ -249,3 +249,63 @@
   4. **不持久化 `committedIds`**：`cargoId = runId-legIndex-netId`，而 `netId` 在进程重启后会被复用。把旧 id 带回来会让新局重新生成的物件被误判成重复提交，表现为「这货怎么交都进不了账」。跨进程重启 = 新局：钱留下、`runId` 换新、去重表清空；同进程重连仍由内存去重表保证。
   5. **存档服务在、但没加载成功时不能退回内存路径**：只读盘 / 双开场景下若降级为内存入账，HUD 会显示「入账成功」而盘上一分没有，是最坏的一种假账。现在一律 `reason=save_unavailable` 整笔拒绝。
 - **遗留 / 下一 Story**：CD6「余额不足购买被拒且磁盘逐字节未变」需要商店，推迟到 Story 4 用真实购买路径验；团灭场景要等 4B 有怪物与倒地；D9 七项与 D11/D12/D13 在 S4A-5 统一收口；存档尚无版本迁移与云同步（P0 不做）。
+
+## Sprint 4A · Story 3 · 折叠推车 v0（2026-10-29 ~ 30）
+
+- **做了什么**：新增 `Cart/CartProfile`（数值资源化）、`Cart/CartController`、`Cart/CartCargo`、
+  `Cart/CartSpawnAnchor`、`Cart/CartParkingZone`、`Noise/NoiseBus`、`Networking/S4ACartTest`；
+  `GrabController` 加 `SetHandsBusy`、`PlayerMotor` 加 `SetExternalSpeedCap`；
+  `QuotaTerminal` + `TeamAccount` 支持整车提交（车停进位 + 有货 + 长按 1.2s）。
+- **交互定案**：推行 = 靠近 + **按住鼠标左键**（与抓货同一键位）；推车时 `handsBusy`，
+  不能一边抱货一边推车。
+- **验收**：
+  - `-s4acart`：装 3 件 → 推行 8.2m → 停车位整车提交入账，`kept=3/3`（连跑两次一致）
+  - `-s4acart-a4`：102kg 两件推行 **30.00m**，不掉货、无卡死
+  - `-s4acart-a5`：卸空 → 折叠 → 抱车爬 12 级楼梯 **3.00m** 不脱手 → 楼顶展开，**69s < 90s**
+  - `-s4acart-noise`：三档 3.0 / 4.0 / 7.0 单调，衰减 3/s，记忆按 age 遗忘
+- **板面尺寸（实测推翻原假设，最重要的一条）**：实测各件大件水平尺寸为
+  保险箱 0.81m、雕像 0.85m、电视 0.86m——**单件就比原板宽 0.75m 还大**。
+  技术计划「三件占地 0.76㎡ / 板面 0.975㎡」严重低估。板面由 1.3×0.75m 改为 **1.8×0.9m**。
+- **A4 指标变更（design 层）**：≥110kg（60+42+12=114kg 三件）→ **≥100kg（60+42=102kg 两件）**，
+  已同步 `P0_VerticalSlice.md`（标 v1.2）与 `Sprint_4A_TechnicalPlan.md`，均写明实测依据。
+- **踩坑**：
+  1. 装货排布必须从固定间距改为**按实际包围盒**，放不下就 `deck_full` 直接拒绝——
+     「显示装上了、一推车掉一地」比拒绝难排查得多。
+  2. 推行判定必须用**水平距离**：把 y 算进去，玩家站在坡上就超出把手范围，车速直接归零。
+  3. 推行必须在**专用跑道**上测：地面推行会随机撞货架，同一份代码在 8.8m / 0.24m 之间横跳。
+  4. 抱车必须**关掉车身碰撞**：否则车顶在台阶上，玩家被自己的车堵在楼梯口（40 秒爬升 0 米）。
+  5. 爬升判定用**相对高度**：玩家身体中心比脚底高 1.05m，绝对 y=3.0 时还差一层楼。
+  6. `PlayerInteract.Update` 里原有的 `if (held == lastSent) return;` 会吃掉新加的输入通道，
+     导致 `autoGrab=True` 但服务端 `grabHeldServer` 始终 False。两条输入要各自独立判断。
+  7. **不要用运行时切 kinematic 做软锁定**：解冻瞬间与车体穿透修正，60kg 件被抛到 260m 外。
+  8. 1kg 配 42kg（42:1 质量比）会被接触求解弹出板外，试过排布 / CCD / 装货顺序都没压住；
+     60+42（1.4:1）完全稳定。这是物理引擎的质量比限制。
+- **遗留**：同板质量比限制未做（若要让 1kg 与 42kg 同板）；窄门三态与
+  `GATE_HEAVY_MANUAL via_cart=False` 未补；D4 / D6 回归留到 Story 5 收口。
+
+### Story 3 收尾（2026-10-30）
+
+- **新增三条判据，全部有拒绝码**：
+  - `-s4acart-narrow`：`S4A_CART_NARROWDOOR_OK empty=1 loaded=1 folded=1 lost=0`
+  - `-s4acart-heavy`：`GATE_HEAVY_MANUAL cargoId=cabinet mass=35 via_cart=False` + `cartLoads=0`
+  - `-s4acart-ratio`：`S4A_CART_RATIO_OK rejected=True accepted=True`（42:1 拒 / 6:1 收）
+- **三处推翻原计划（都写了实测依据，不造假断言）**：
+  1. **「载货车必被窄门挡住」不成立**。推车碰撞体是 `deckLength × topY × deckWidth` = 1.8 × 0.4 × **0.9**，
+     门净开口 **1.20m**，货沿板长布列不增加侧向宽度 ⇒ 物理上过得去。原计划要断言 `blocked=True`
+     只能是假通过。改为断言真不变量：`lost==0`（过门不掉货）+ `blocked_fold==True`
+     （载货时折叠必须被拒，`hint=unload_first`）——后者才是「窄门 → 卸货折叠」这条玩法规则的真正落点。
+  2. **`GATE_HEAVY_MANUAL` 不走 `EvacMarker`**：`EvacZone` / `EvacSettlement` 已在 4A 从 Night1 移除
+     （`S4ASceneSetup.Validate` 断言 `evac==0`），改为徒手搬 `cabinet` 到公秤入账。
+  3. **`via_cart` 不用「grep 日志里没有该 id」判**：改用 `CartController.LoadEventCount` 计数器，
+     `S4A_CART_HEAVY_RESULT cartLoads=0`。日志受帧序影响，「没抓到」与「没发生」分不开。
+- **顺带修掉两个真 bug（都是收尾用例逼出来的）**：
+  1. **推车是横着走的**。`DriveBehind` 把车 yaw 直接设成玩家 yaw，而车体长轴是 local +X
+     （板面 1.8 沿 X、0.9 沿 Z），结果是侧向宽度变成 1.8m、任何 1.2m 窄门都过不去，
+     货横着摆在车上、把手飘在车侧 0.35m 外。改为 `playerYaw - 90`，把手一并挪到 `-X`（车尾）。
+     实测狭窄门 yaw=89.9，稳定。
+  2. **装货布局每件都重新量实时包围盒**。货落板后会转、会倾斜，量出的半宽从 0.265 涨到 0.47，
+     第三件被误判 `deck_full`（`need=1.01 limit=0.90`，而 0.53+0.50+0.44 其实塞得下）。
+     改为**装载瞬间锁定半宽**（`loadHalfWidth` 字典，`PruneLoadWidths` 按当前板面货物清幽灵），
+     `-s4acart` 由 `failures=4` 回到 `failures=0`。
+- **回归**：`-s4acart` / `-a4` / `-a5` / `-noise` / `-narrow` / `-heavy` / `-ratio` / `-s4adeposit` 八条全绿
+  （A4 30.01m，A5 3.00m / 69.1s，Story 1 余额 2650 未变）。

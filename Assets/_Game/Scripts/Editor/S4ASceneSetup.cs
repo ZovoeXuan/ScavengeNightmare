@@ -313,6 +313,7 @@ namespace ScavengeNightmare.EditorTools
             GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(CartPrefabPath);
             if (existing != null)
             {
+                RepairCartPrefab(existing, profile);
                 return existing;
             }
 
@@ -361,8 +362,8 @@ namespace ScavengeNightmare.EditorTools
             GameObject handle = GameObject.CreatePrimitive(PrimitiveType.Cube);
             handle.name = "Handle";
             handle.transform.SetParent(root.transform, false);
-            handle.transform.localScale = new Vector3(profile.deckWidth, 0.08f, 0.08f);
-            handle.transform.localPosition = new Vector3(0f, profile.handleHeight, profile.deckLength * 0.5f - 0.1f);
+            handle.transform.localScale = new Vector3(0.08f, 0.08f, profile.deckWidth);
+            handle.transform.localPosition = new Vector3(-(profile.deckLength * 0.5f - 0.1f), profile.handleHeight, 0f);
             UnityEngine.Object.DestroyImmediate(handle.GetComponent<Collider>());
 
             root.AddComponent<NetworkIdentity>();
@@ -385,6 +386,59 @@ namespace ScavengeNightmare.EditorTools
             AssetDatabase.SaveAssets();
             Debug.Log("[S4A] S4A_CART_PREFAB_CREATED path=" + CartPrefabPath);
             return saved;
+        }
+
+        /// <summary>
+        /// 已存在的推车预制体就地校正尺寸，而不是「存在就跳过」。
+        /// 板面从 1.3×0.75 改到 1.8×0.9 那次就是这么漏的：预制体早就在，改表之后
+        /// 碰撞体还是旧尺寸，货放上去直接穿板。把手也一直飘在车侧外面
+        /// （把手原本挂在 local +Z = 0.8，而车体 Z 半宽只有 0.45）——车头是 local +X。
+        /// 所以这里每次都按 profile 重算一遍，幂等。
+        /// </summary>
+        private static void RepairCartPrefab(GameObject prefab, CartProfile profile)
+        {
+            bool changed = false;
+            float topY = profile.deckHeight + 0.28f;
+
+            BoxCollider hull = prefab.GetComponent<BoxCollider>();
+            if (hull != null)
+            {
+                Vector3 size = new(profile.deckLength, topY, profile.deckWidth);
+                Vector3 center = new(0f, topY * 0.5f, 0f);
+
+                if ((hull.size - size).sqrMagnitude > 0.0001f || (hull.center - center).sqrMagnitude > 0.0001f)
+                {
+                    hull.size = size;
+                    hull.center = center;
+                    changed = true;
+                }
+            }
+
+            Transform deck = prefab.transform.Find("Deck");
+            if (deck != null)
+            {
+                deck.localScale = new Vector3(profile.deckLength, profile.deckHeight, profile.deckWidth);
+                deck.localPosition = new Vector3(0f, topY - profile.deckHeight * 0.5f, 0f);
+                changed = true;
+            }
+
+            Transform handle = prefab.transform.Find("Handle");
+            if (handle != null)
+            {
+                // 把手在车尾：车头 +X，所以车尾是 -X。
+                handle.localScale = new Vector3(0.08f, 0.08f, profile.deckWidth);
+                handle.localPosition = new Vector3(-(profile.deckLength * 0.5f - 0.1f), profile.handleHeight, 0f);
+                changed = true;
+            }
+
+            if (!changed)
+            {
+                return;
+            }
+
+            PrefabUtility.SaveAsPrefabAsset(prefab, CartPrefabPath);
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[S4A] S4A_CART_PREFAB_REPAIRED hull={profile.deckLength}x{profile.deckWidth} handle=-X");
         }
 
         /// <summary>场景里只摆锚点与停车位，推车本体由服务端运行时 Spawn（D6.5：场景实例拿不到 sceneId）。</summary>

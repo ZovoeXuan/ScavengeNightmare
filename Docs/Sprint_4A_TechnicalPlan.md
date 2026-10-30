@@ -774,10 +774,14 @@ ScavengeNightmare.exe -s4acart          → S4A_CART_OK count=3 mass=46 push=1.9
                                           + GATE_CART_STALL duration= mass= count= where= rescued=(self|unstick|fail)（A4 判据）
                                           + GATE_TIMER tag=stair_cycle ms=<n>
                                           + GATE_HEAVY_MANUAL cargoId= mass= via_cart=False（A3 判据）
-                                       窄门三条子断言（对应 Story 3 CD7）：
-                                          + S4A_CART_NARROWDOOR mode=empty  passed=True   （空车展开 0.75m 过 1.2m，未折叠）
-                                          + S4A_CART_NARROWDOOR mode=loaded blocked=True hint=unload
-                                          + S4A_CART_NARROWDOOR mode=unloaded passed=True
+                                       窄门三态（对应 Story 3 CD7；v1.2 按实测修订口径）：
+                                          + S4A_CART_NARROWDOOR mode=empty  passed=True   （空车 0.90m 侧宽过 1.20m 净开口）
+                                          + S4A_CART_NARROWDOOR mode=loaded passed=True lost=0 blocked_fold=True hint=unload
+                                          + S4A_CART_NARROWDOOR mode=folded passed=True   （卸空→折叠→抱过门）
+                                          + S4A_CART_NARROWDOOR_OK empty=1 loaded=1 folded=1 lost=0
+                                       质量比闸门正负向：
+                                          + S4A_CART_RATIO_REJECT tiny=glass mass=1.0 heavy=42.0 ratio=42.0 limit=20
+                                          + S4A_CART_RATIO_OK rejected=True accepted=True
 ScavengeNightmare.exe -s4acart-noise    → S4A_CART_NOISE_OK s1=3.0 s2=4.0 s3=7.0 limit70=none
 （另跑）Main 包 -d4test -feel=light / -d6test  → 回归
 ```
@@ -1050,9 +1054,9 @@ run_regression_4a.bat
 ## 附录 A · 日志码与命名规范
 
 - 新日志统一前缀 `[S4A]`，码形 `S4A_XXX`，与既有 `D12_/D13_/D65_` 风格一致，便于批处理 grep。
-- **`S4A_*` 码**（本计划自有）：`S4A_DEPOSIT` / `S4A_DEPOSIT_DUP` / `S4A_DEPOSIT_ZERO` / `S4A_DEPOSIT_TALLY` / `S4A_SAVE_OK` / `S4A_SAVE_VERIFY_OK` / `S4A_SAVE_FAIL` / `S4A_SAVE_RECOVERED` / `S4A_SAVE_CORRUPT_RECOVERED` / `S4A_SAVE_LOCKED` / `S4A_CART_OK` / `S4A_CART_NOISE_OK` / `S4A_SHOP_OK` / `S4A_CARRY_CAP_OK` / `S4A_LOOP_OK` / `S4A_PERF_OK` / `S4A_NEUTRAL_OK` / `S4A_VALIDATE_OK` / `S4A_QUOTA_FALLBACK` / `S4A_REGRESSION_OK`
+- **`S4A_*` 码**（本计划自有）：`S4A_DEPOSIT` / `S4A_DEPOSIT_DUP` / `S4A_DEPOSIT_ZERO` / `S4A_DEPOSIT_TALLY` / `S4A_SAVE_OK` / `S4A_SAVE_VERIFY_OK` / `S4A_SAVE_FAIL` / `S4A_SAVE_RECOVERED` / `S4A_SAVE_CORRUPT_RECOVERED` / `S4A_SAVE_LOCKED` / `S4A_CART_OK` / `S4A_CART_NOISE_OK` / `S4A_CART_NARROWDOOR` / `S4A_CART_NARROWDOOR_OK` / `S4A_CART_HEAVY_OK` / `S4A_CART_RATIO_OK` / `S4A_CART_LOAD_REJECT` / `S4A_CART_FOLD_REJECT` / `S4A_SHOP_OK` / `S4A_CARRY_CAP_OK` / `S4A_LOOP_OK` / `S4A_PERF_OK` / `S4A_NEUTRAL_OK` / `S4A_VALIDATE_OK` / `S4A_QUOTA_FALLBACK` / `S4A_REGRESSION_OK`
 - **`GATE_*` 码**（QA `P0_AcceptanceGate.md` 约定的验收门码，字段名不许改）：`GATE_WALLET` / `GATE_WALLET_SYNC` / `GATE_CART` / `GATE_CART_STALL` / `GATE_TIMER` / `GATE_BUY` / `GATE_BUY_REJECT` / `GATE_BUY_UNDO` / `GATE_BUY_UNDO_REJECT` / `GATE_LEVEL` / `GATE_HEAVY_MANUAL`
-- 命令行开关：`-s4adeposit` / `-s4asave` / `-s4asave-slow` / `-s4asave-kill` / `-s4asave-verify` / `-s4asave-failio` / `-s4acorrupt` / `-s4acart` / `-s4acart-noise` / `-s4ashop` / `-s4acarrycap` / `-s4aloop` / `-s4aloopclient` / `-s4asyncbreak` / `-s4aperf` / `-savedir=<abs>` / `-expect=<n>` / `-anchors=<n>` / `-feel=light` / `-notraits`
+- 命令行开关：`-s4adeposit` / `-s4asave` / `-s4asave-slow` / `-s4asave-kill` / `-s4asave-verify` / `-s4asave-failio` / `-s4acorrupt` / `-s4acart` / `-s4acart-a4` / `-s4acart-a5` / `-s4acart-noise` / `-s4acart-narrow` / `-s4acart-heavy` / `-s4acart-ratio` / `-s4ashop` / `-s4acarrycap` / `-s4aloop` / `-s4aloopclient` / `-s4asyncbreak` / `-s4aperf` / `-savedir=<abs>` / `-expect=<n>` / `-anchors=<n>` / `-feel=light` / `-notraits`
 - **字段契约（不许改）**：
 
   | 用途 | 行格式 | 判据 |
@@ -1065,7 +1069,9 @@ run_regression_4a.bat
   | A8 双端一致 | `GATE_WALLET_SYNC server= client= match=` | `match==true`；`-s4asyncbreak` 下必须变 `false` |
   | A4 卡死 | `GATE_CART_STALL duration= mass= count= where=` | `duration<1500`；判据：0.75 s 窗口内位移 <0.08m 记停滞，连续 2 次判卡死 |
   | A5/A10 计时 | `GATE_TIMER tag= ms=` | `tag=stair_cycle` 时 `ms<90000` |
-  | A3 徒手 | `GATE_HEAVY_MANUAL cargoId= mass= via_cart=False` | `via_cart==False` 且该 id 不在任何 `GATE_CART` 清单里 |
+  | A3 徒手 | `GATE_HEAVY_MANUAL cargoId= mass= via_cart=False` | `via_cart==False`；且 `S4A_CART_HEAVY_RESULT cartLoads=0`（`CartController.LoadEventCount` 前后不变，比抓日志可靠） |
+  | A3 窄门 | `S4A_CART_NARROWDOOR mode=(empty\|loaded\|folded) passed= loaded 带 lost= blocked_fold=` | 三态 `passed=True`、`lost==0`、`blocked_fold==True`（载货折叠必须被拒） |
+  | A3 质量比 | `S4A_CART_LOAD_REJECT reason=mass_ratio min= max= ratio= limit=` | 42:1 必须拒；`S4A_CART_RATIO_OK rejected=True accepted=True` |
   | 商品 | `GATE_BUY itemId= price= balanceAfter= purchaseId=` / `GATE_BUY_REJECT … reason=` / `GATE_BUY_UNDO …` / `GATE_BUY_UNDO_REJECT …` | 二次撤销必须 `REJECT` |
   | 关卡 | `GATE_LEVEL n= quota= source= before= after=` | `source==table` |
   | 性能 | `S4A_PERF_OK fps= kbps= props= carts=` | `fps>=60 && kbps<=600` |
