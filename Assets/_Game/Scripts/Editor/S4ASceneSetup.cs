@@ -801,6 +801,11 @@ namespace ScavengeNightmare.EditorTools
                 host.AddComponent<S4ALoopTest>();
             }
 
+            if (host.GetComponent<S4ATestGuard>() == null)
+            {
+                host.AddComponent<S4ATestGuard>();
+            }
+
             EditorUtility.SetDirty(host);
         }
 

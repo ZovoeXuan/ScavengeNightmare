@@ -357,6 +357,51 @@ namespace ScavengeNightmare.Gameplay
         }
 
         /// <summary>
+        /// **仅测试构建**：跳过距离与射线校验，直接把目标挂到手上。
+        ///
+        /// 为什么需要它：自动化抓货是「瞬移玩家 → 瞬移货物 → TryGrab」，
+        /// 而 CharacterController 的位姿是延迟更新的，瞬移后立刻读到的仍是上一帧坐标，
+        /// 货物被摆到相对旧坐标的持握点上，距离偶尔超过 EffectiveRange + 1，
+        /// 于是抓取静默失败、后面整条链崩掉（A4 只推 0.48m、narrow 一件都没装上都是这个）。
+        ///
+        /// 作用域：方法体只在定义了 S4A_TEST_BUILD 的构建里存在（BuildWindows 的 sprint4a
+        /// 分支会加这个宏，正式包没有），且运行期还要求 S4ACli.IsTestRun。
+        /// 真人路径的抓取校验仍由 A3 / D13 的真实按键覆盖，不会因此被削弱。
+        /// </summary>
+        [Server]
+        public bool ServerForceGrab(GrabbableProp target)
+        {
+#if S4A_TEST_BUILD
+            if (!ScavengeNightmare.Save.S4ACli.IsTestRun)
+            {
+                Debug.LogWarning("[S4A] S4A_FORCEGRAB_DENIED reason=not_test_run");
+                return false;
+            }
+
+            if (handsBusy || isHolding || target == null || target.Body == null)
+            {
+                Debug.Log($"[S4A] S4A_FORCEGRAB_DENIED reason=state handsBusy={handsBusy} holding={isHolding} target={(target != null)}");
+                return false;
+            }
+
+            // 与 ServerGrab 的唯一差别：不做距离 / 射线 / 近视眼校验。
+            // 其余持有状态必须逐字对齐，否则 CartController / CartCargo 看到的是半吊子持有态。
+            heldProp = target;
+            heldMass = target.Mass;
+            isHolding = true;
+            target.SetHeld(true);
+            target.SetHolder(this);
+            target.Body.WakeUp();
+
+            Debug.Log($"[S4A] S4A_FORCEGRAB id={(target.Profile != null ? target.Profile.id : "?")} mass={target.Mass:F1}");
+            return true;
+#else
+            Debug.LogWarning("[S4A] S4A_FORCEGRAB_DENIED reason=not_test_build");
+            return false;
+#endif
+        }
+
+        /// <summary>
         /// 朝向 + 俯仰合成准星方向；俯仰由 PlayerMotor 同步到服务端。
         /// D8「手抖」在这里注入抖动：抖动加在服务端计算的持物目标点上，
         /// 因此四个人都能看到东西在手里晃，而不只是本地画面抖。

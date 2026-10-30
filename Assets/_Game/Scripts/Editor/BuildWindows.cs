@@ -53,6 +53,23 @@ public static class BuildWindows
             return;
         }
 
+        // sprint4a 包临时加 S4A_TEST_BUILD：只有这个包里有「跳过抓取校验」的测试入口，
+        // 正式包（Main / Supermarket）编译期就没有这段代码，不靠运行期参数兜底。
+        string definesBefore = null;
+
+        if (sprint4a)
+        {
+            definesBefore = PlayerSettings.GetScriptingDefineSymbolsForGroup(BuildTargetGroup.Standalone);
+
+            if (!definesBefore.Contains("S4A_TEST_BUILD"))
+            {
+                PlayerSettings.SetScriptingDefineSymbolsForGroup(
+                    BuildTargetGroup.Standalone,
+                    string.IsNullOrEmpty(definesBefore) ? "S4A_TEST_BUILD" : definesBefore + ";S4A_TEST_BUILD");
+                Debug.Log($"[BUILD] BUILD_DEFINES_ADDED S4A_TEST_BUILD before={definesBefore}");
+            }
+        }
+
         var options = new BuildPlayerOptions
         {
             // sprint4a 包里夜路与安全屋必须都在：换关靠 ServerChangeScene 按名字加载，
@@ -64,6 +81,12 @@ public static class BuildWindows
         };
 
         BuildReport report = BuildPipeline.BuildPlayer(options);
+
+        if (definesBefore != null)
+        {
+            PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.Standalone, definesBefore);
+            Debug.Log("[BUILD] BUILD_DEFINES_RESTORED " + definesBefore);
+        }
         if (report.summary.result != BuildResult.Succeeded)
         {
             Debug.LogError($"BUILD_FAILED result={report.summary.result} errors={report.summary.totalErrors}");

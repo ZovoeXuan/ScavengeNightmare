@@ -70,7 +70,11 @@ set "LOG=%BASE%\%NAME%.log"
 echo.
 echo --- %NAME%  %ARGS%
 
-"%EXE%" %ARGS% -feel=light -savedir="%BASE%\%NAME%_save" -logFile "%LOG%" >nul 2>&1
+rem Kill leftovers before starting: a stale process still holds the KCP port and starves
+rem the first frames of the next case (seen as A4 pushing only 0.48m).
+taskkill /F /IM ScavengeNightmare.exe >nul 2>&1
+
+"%EXE%" %ARGS% -feel=light -s4afixedyaw -savedir="%BASE%\%NAME%_save" -logFile "%LOG%" >nul 2>&1
 set "CODE=%ERRORLEVEL%"
 
 findstr /c:"S4A_NEUTRAL_OK traits=none feel=light" "%LOG%" >nul 2>&1
@@ -80,19 +84,26 @@ if errorlevel 1 (
   goto :eof
 )
 
-findstr /c:"%MARK%" "%LOG%" >nul 2>&1
-if errorlevel 1 (
-  echo   FAIL  %NAME%  reason=marker_missing mark=%MARK% exit=%CODE%
+if not "%CODE%"=="0" (
+  if "%CODE%"=="4" (
+    echo   FAIL  %NAME%  class=exception exit=4
+  ) else (
+    echo   FAIL  %NAME%  class=assert exit=%CODE%
+  )
   set /a FAIL+=1
+  echo   FAIL  %NAME%  class=assert exit=%CODE% >>"%BASE%\summary.txt"
   goto :eof
 )
 
-if not "%CODE%"=="0" (
-  echo   FAIL  %NAME%  reason=exit_code exit=%CODE%
+findstr /c:"%MARK%" "%LOG%" >nul 2>&1
+if errorlevel 1 (
+  echo   FAIL  %NAME%  class=marker_missing mark=%MARK%
   set /a FAIL+=1
+  echo   FAIL  %NAME%  class=marker_missing mark=%MARK% >>"%BASE%\summary.txt"
   goto :eof
 )
 
 echo   PASS  %NAME%
 set /a PASS+=1
+echo   PASS  %NAME% >>"%BASE%\summary.txt"
 goto :eof

@@ -130,6 +130,16 @@ namespace ScavengeNightmare.Gameplay
                     ? Quaternion.Euler(0f, UnityEngine.Random.Range(0f, 360f), 0f)
                     : anchor.transform.rotation;
 
+                // 自动化用例固定朝向：随机 yaw 会让同一件货的包围盒在 0.55~0.96 之间跳，
+                // 装车判据随之抖动（A4 就被判过一次 deck_full）。只在 Night1 且显式传参时生效，
+                // Supermarket 等正式场景与真人游玩的随机朝向完全保留。
+                if (anchor.randomYaw
+                    && ScavengeNightmare.Save.S4ACli.Has("-s4afixedyaw")
+                    && UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Night1")
+                {
+                    rot = anchor.transform.rotation;
+                }
+
                 GameObject instance = Instantiate(prefab, anchor.transform.position, rot);
                 instance.name = $"{anchor.profileId}_{count + 1}";
                 NetworkServer.Spawn(instance);

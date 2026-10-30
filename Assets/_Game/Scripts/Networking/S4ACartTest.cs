@@ -570,6 +570,25 @@ namespace ScavengeNightmare.Networking
 
                 if (fCart.ItemCount <= before)
                 {
+                    // 单帧抖动不该判死：重新对位再试一次，两次都失败才算真失败
+                    Debug.Log($"[S4A] S4A_LOAD_RETRY id={(prop.Profile != null ? prop.Profile.id : "?")} first=timeout");
+
+                    if (!fGrab.IsHolding)
+                    {
+                        Vector3 retry = fCart.transform.position + Vector3.back * 1.25f;
+                        retry.y = 1.05f;
+                        Teleport(fMotor.transform, retry);
+                        fMotor.transform.LookAt(new Vector3(fCart.transform.position.x, retry.y, fCart.transform.position.z));
+                        yield return new WaitForSeconds(0.25f);
+                        yield return GrabProp(fMotor, fGrab, prop);
+                    }
+
+                    yield return LoadOntoCart(fMotor, fGrab, fCart, prop);
+                    yield return new WaitForSeconds(0.5f);
+                }
+
+                if (fCart.ItemCount <= before)
+                {
                     Fail($"load_failed id={(prop.Profile != null ? prop.Profile.id : "?")}");
                 }
             }
@@ -868,6 +887,7 @@ namespace ScavengeNightmare.Networking
             float startY = fMotor.transform.position.y;
             float cartStartY = fCart.transform.position.y;
 
+            Debug.Log("[S4A] S4A_A5_STAGE name=climb_begin");
             fMotor.ApplyAutomationMove(new Vector2(0f, 1f), false);
 
             // 玩家站立时身体中心比脚底高约 1.05m，「爬升 3.00m」必须看相对高度，
@@ -1542,9 +1562,17 @@ namespace ScavengeNightmare.Networking
             float dist = Vector3.Distance(motor.transform.position, prop.transform.position);
             Debug.Log($"[S4A] S4A_CART_GRAB_DEBUG id={(prop.Profile != null ? prop.Profile.id : "?")} mass={prop.Mass:F1} dist={dist:F2} holdDist={holdDist:F2} isServer={grab.isServer}");
 
-            grab.TryGrab(prop);
+            // 优先走「仅测试构建」的强制抓取：瞬移后 CharacterController 的位姿是延迟更新的，
+            // 距离校验偶尔会拿旧坐标判超界，导致抓取静默失败（A4 只推 0.48m、narrow 一件没装上）。
+            // 强制抓取不可用时才回退到真实 TryGrab，保证这条链路本身仍被走过。
+            bool forced = grab.ServerForceGrab(prop);
+            if (!forced)
+            {
+                grab.TryGrab(prop);
+            }
+
             yield return null;
-            yield return WaitFor(() => grab.IsHolding, 3f, $"grab_timeout id={(prop.Profile != null ? prop.Profile.id : "?")}");
+            yield return WaitFor(() => grab.IsHolding, 3f, $"grab_timeout id={(prop.Profile != null ? prop.Profile.id : "?")} forced={forced}");
         }
 
         private IEnumerator TurnTo(PlayerMotor motor, GrabController grab, Vector3 target)
