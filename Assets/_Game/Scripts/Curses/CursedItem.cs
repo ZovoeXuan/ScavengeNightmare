@@ -60,6 +60,7 @@ namespace ScavengeNightmare.Curses
 
         [SyncVar] private bool dormant;
         [SyncVar] private uint holderNetId;
+        [SyncVar] private uint cartOwnerNetId;
         [SyncVar] private float laughCountdown;
         [SyncVar] private int laughCount;
 
@@ -86,6 +87,13 @@ namespace ScavengeNightmare.Curses
 
         /// <summary>归属玩家的 netId；0 = 无主（躺在地上）。</summary>
         public uint HolderNetId => holderNetId;
+
+        /// <summary>
+        /// 把它装上车的人。诅咒货在车上时仍算在这个人头上（§4.4 解法「丢车外」），
+        /// 归属人是**装车那一刻的装载者**，不是当前推行者、也不是离车最近的人。
+        /// 卸下 / 掉落 / 提交后 OnCart 判不到，归属自动解除。
+        /// </summary>
+        public uint CartOwnerNetId => cartOwnerNetId;
 
         /// <summary>距离下次发笑还有多久（HUD 倒计时用）。</summary>
         public float LaughCountdown => laughCountdown;
@@ -142,6 +150,13 @@ namespace ScavengeNightmare.Curses
         public void ServerSetHolder(uint value)
         {
             holderNetId = value;
+        }
+
+        /// <summary>装车那一刻由 CartController 写入：谁装上去谁承担。</summary>
+        [Server]
+        public void ServerSetCartOwner(uint value)
+        {
+            cartOwnerNetId = value;
         }
 
         [Server]

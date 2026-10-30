@@ -156,7 +156,7 @@
 | `Scripts/Networking/S4BWipeTest.cs` | MonoBehaviour | — | `-s4bwipe` |
 | `Scripts/Networking/S4BNoiseTest.cs` | MonoBehaviour | — | `-s4bnoise` |
 | `Scripts/Networking/S4BMonsterTest.cs` | MonoBehaviour | — | `-s4bmon` / `-s4bgreeter` / `-s4bscream` |
-| `Scripts/Networking/S4BCurseTest.cs` | MonoBehaviour | — | `-s4bcurse` |
+| `Scripts/Networking/S4BCurseTest.cs` | MonoBehaviour | — | `-s4bcurse` / `-s4blegcurse`（`-s4bleg` 归 S4B-5，见 Story S4B-4） |
 | `Scripts/Networking/S4BShop8Test.cs` | MonoBehaviour | — | `-s4bshop8` |
 | `Scripts/Networking/S4BLegTest.cs` | MonoBehaviour | — | `-s4bleg` / `-s4blegclient` |
 | `Scripts/Networking/S4BPerfTest.cs` | MonoBehaviour | — | `-s4bperf` |
@@ -289,6 +289,20 @@
 
 - **P0 不做封印**，所以两件在 4B 全部按 60% 计价；HUD 必须常驻「未封印 60%」。
 - 发笑必须走 `NoiseBus.Report("curse_doll", 8, holderPos)`，**可归因**；不得只加全局值。
+
+**归属与休眠的裁决口径**（设计未指定，由实现反推确定，写下来以免将来被当成 bug）：
+
+| 规则 | 口径 |
+|---|---|
+| 归属来源 | 手持 > 随车。随车归属 = **把它装上车的人**（`CartController.TryLoadFrom` 在装车那一刻记 `CursedItem.CartOwnerNetId`），不是当前推行者、也不是离车最近的人——后者会变成「谁路过谁背锅」 |
+| 解除 | 卸下 / 掉落 / 提交后 `CartCargo` 里判不到，随车归属立即解除 |
+| 双持优先级 | **先入手的生效，后入手的休眠**（`dormant=1`）。这是「第 2 种休眠」的字面读法 |
+| 归属人离线 / 倒地 | 整批保持休眠态，**不转移给别人**，避免队友替你背一件他没碰过的诅咒 |
+| 裁决留痕 | 每次归属变化打 `S4B_CURSE_OWNER prop=<id> owner=<netId> source=hand|cart` |
+
+P0 没有工具带槽（`tool_belt` / `BeltSlot` 属 S4B-5，且牌位 15kg 超过腰带 ≤7kg 限制），
+所以「手持一件 + 车上载着另一件」是当前唯一能成立的双持路径；等工具带做完，
+只是在归属来源里多一条，上面这些规则都不用动。
 
 ### 4.5 商店 8 件（4A 4 件 + 4B 4 件）
 
@@ -457,10 +471,16 @@
    - 同一玩家双持（笑面偶 + 牌位，需要 `tool_belt` 槽）→ 只有 1 种生效，第 2 种 `dormant=1`，HUD 明示。
    - 价值：笑面偶 510、牌位 780；HUD 常驻「未封印 60%」。
    - 牌位放下：按 <1.5s 松手 → `GATE_CURSE_HOLD_REJECT need=1.5 actual=<n>`；≥1.5s → 放下成功。
-2. L1/L2/L3 生成 0/1/2 件（`-s4bleg` 覆盖）。
+2. L1/L2/L3 生成 0/1/2 件（`-s4blegcurse` 覆盖）。
 3. 回归：4A 13 条全绿（普通货 `requiredReleaseHold=0`，不受影响）。
 
-**测试钩子**：`-s4bcurse`
+**测试钩子**：`-s4bcurse` / `-s4blegcurse`
+
+> **钩子划分（别再撞）**：本 Story 的关卡梯度钩子是 **`-s4blegcurse`**；
+> **`-s4bleg` 由 S4B-5 独占**（配额 1800/2400/2800、锚点 12/14/16、怪物 1/3/4）。
+> 两者**不得共用监听器**——两个 fixture 同时认同一个开关，会在同一进程各调一次
+> `NetworkManager.StartHost()`，直接崩。S4B-5 的 leg 断言请并进
+> `Scripts/Networking/S4BCurseTest.cs`，不要新建第二个 MonoBehaviour。
 
 **关键决策**：P0 无封印，所以恒 60%；休眠不是「隐藏」，HUD 必须写清楚；发笑必须可归因，禁止只加全局值。
 
@@ -562,7 +582,7 @@ run_regression_4b.bat
   ├ 4A 基线段：D4 -feel=light / D6 / D8 / D9 / D12 / D13 / S4A 13 条
   ├ 4B 段：-s4bvitals / -s4bdown / -s4bwipe / -s4bshop8 /
   │        -s4bnoise / -s4bmon / -s4bgreeter / -s4bscream /
-  │        -s4bcurse / -s4bleg / -s4blegclient / -s4bperf
+  │        -s4bcurse / -s4blegcurse / -s4bleg / -s4blegclient / -s4bperf
   └ 最终 S4B_REGRESSION_OK passes=21 expected=21
 ```
 - `expected` 从 `Tools/regression_4b_cases.txt` 行数读。
@@ -647,7 +667,7 @@ run_regression_4b.bat
 | 性能 | `S4B_PERF_OK fps= kbps= props= carts= monsters=` | `fps>=60 && kbps<=600` |
 
 **命令行开关**：
-`-s4bvitals` / `-s4bdown` / `-s4bwipe` / `-s4bnoise` / `-s4bmon` / `-s4bgreeter` / `-s4bscream` / `-s4bcurse` / `-s4bshop8` / `-s4bleg` / `-s4blegclient` / `-s4bperf` / `-p0props` / `-leg=<n>` / `-players=<n>` / `-savedir=<abs>` / `-feel=light`
+`-s4bvitals` / `-s4bdown` / `-s4bwipe` / `-s4bnoise` / `-s4bmon` / `-s4bgreeter` / `-s4bscream` / `-s4bcurse` / `-s4bshop8` / `-s4blegcurse` / `-s4bleg` / `-s4blegclient` / `-s4bperf` / `-p0props` / `-leg=<n>` / `-players=<n>` / `-savedir=<abs>` / `-feel=light`
 
 ---
 

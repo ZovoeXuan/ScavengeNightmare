@@ -542,6 +542,15 @@ namespace ScavengeNightmare.Cart
                 return;
             }
 
+            // S4B-4：诅咒货上车要记住是谁装上去的。诅咒的随车归属认这个装载者，
+            // 不认当前推行者、也不认离车最近的人——否则会变成谁路过谁背锅。
+            ScavengeNightmare.Curses.CursedItem cursed = prop.GetComponent<ScavengeNightmare.Curses.CursedItem>();
+            if (cursed != null)
+            {
+                cursed.ServerSetCartOwner(grab.netId);
+                Debug.Log($"[S4B] S4B_CURSE_CART_LOAD id={cursed.CurseId} loader={grab.netId}");
+            }
+
             LoadEventCount++;
             loadHalfWidth[prop] = myHalf;
 

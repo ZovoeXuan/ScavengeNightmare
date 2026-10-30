@@ -19,7 +19,7 @@ namespace ScavengeNightmare.Networking
     ///   2. 无字牌位：放下必须长按 1.5s；不足 1.5s 松手 → GATE_CURSE_HOLD_REJECT，
     ///      够了 → GATE_CURSE_HOLD_OK；未封印 60% → 780。
     ///   3. 同一玩家同时招惹两件（手持 + 随车）→ 只有 1 件生效，第 2 件 dormant=1，HUD 明示。
-    ///   4. -s4bleg：L1/L2/L3 生成 0/1/2 件。
+    ///   4. -s4blegcurse：L1/L2/L3 生成 0/1/2 件（-s4bleg 归 S4B-5，不得共用）。
     ///
     /// 判据来源：需要断言「日志里真的出现了某一行」的，一律从 Application.logMessageReceived
     /// 抓原文 + 时间戳，不去读被测对象自己暴露的计数器——读自己写的字段等于把判据建在被
@@ -67,7 +67,9 @@ namespace ScavengeNightmare.Networking
         private void Start()
         {
             bool curse = S4ACli.Has("-s4bcurse");
-            runLeg = S4ACli.Has("-s4bleg");
+            // 钩子是 -s4blegcurse，不是 -s4bleg：-s4bleg 由 S4B-5 独占（配额/锚点/怪物梯度）。
+            // 两个 Story 若共用同一个开关名，两个夹具会在同一进程各调一次 StartHost()。
+            runLeg = S4ACli.Has("-s4blegcurse");
 
             if (!curse && !runLeg)
             {
@@ -451,6 +453,13 @@ namespace ScavengeNightmare.Networking
             Check(carriedSeen == 2, $"dual_carry_count actual={carriedSeen} want=2");
             Check(dormant == 1, $"dual_dormant_count actual={dormant} want=1");
             Check(activeId != "none" && activeId != dormantId, $"dual_active_and_dormant_same id={activeId}");
+
+            // 归属口径：牌位是「装上车的人」承担（source=cart），笑面偶是手持（source=hand），
+            // 且两者 owner 必须是同一个 netId——这才是「同一归属人持有两种」。
+            Check(FindLine($"S4B_CURSE_OWNER prop={CursedItem.TabletId} owner={vitals.netId} source=cart") >= 0,
+                $"tablet_owner_not_loader netId={vitals.netId}");
+            Check(FindLine($"S4B_CURSE_OWNER prop={CursedItem.DollId} owner={vitals.netId} source=hand") >= 0,
+                $"doll_owner_not_hand netId={vitals.netId}");
 
             // 休眠不是隐藏：玩家必须看得见。
             Check(hud.HasDormant, "hud_missing_dormant_flag");

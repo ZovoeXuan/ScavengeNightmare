@@ -28,6 +28,11 @@ namespace ScavengeNightmare.Curses
     /// </summary>
     public sealed class CurseRuntime : MonoBehaviour
     {
+        /// <summary>归属来源：写在 S4B_CURSE_OWNER 日志里，查「为什么这件没生效」时第一眼看这个。</summary>
+        public const byte OwnerSourceNone = 0;
+        public const byte OwnerSourceHand = 1;
+        public const byte OwnerSourceCart = 2;
+
         private sealed class LaughState
         {
             public bool armed;
@@ -43,10 +48,6 @@ namespace ScavengeNightmare.Curses
         [SerializeField] private GameObject dollPrefab;
         [SerializeField] private GameObject tabletPrefab;
 
-        [Header("归属")]
-        [Tooltip("车上的诅咒货归因给离它最近的玩家（米）")]
-        [SerializeField] private float cartCarryRadius = 2.5f;
-
         [Header("扫描")]
         [Tooltip("场上诅咒物的扫描间隔（秒）。物件极少，不用每帧 Find")]
         [SerializeField] private float refreshInterval = 0.2f;
@@ -54,6 +55,8 @@ namespace ScavengeNightmare.Curses
         private readonly List<CursedItem> items = new();
         private readonly Dictionary<uint, List<CursedItem>> carried = new();
         private readonly Dictionary<CursedItem, LaughState> laughs = new();
+        private readonly Dictionary<CursedItem, uint> owners = new();
+        private readonly Dictionary<CursedItem, byte> sources = new();
         private float refreshIn;
         private int laughTotal;
 
@@ -211,6 +214,8 @@ namespace ScavengeNightmare.Curses
             items.Clear();
             carried.Clear();
             laughs.Clear();
+            owners.Clear();
+            sources.Clear();
             Debug.Log("[S4B] S4B_CURSE_DESPAWN_ALL");
         }
 
@@ -228,9 +233,19 @@ namespace ScavengeNightmare.Curses
 
         // ---------------- 裁决 ----------------
 
-        /// <summary>这件诅咒归谁；0 = 无主（躺在地上，不生效）。</summary>
-        public uint CarrierOf(CursedItem item)
+        /// <summary>
+        /// 这件诅咒归谁；0 = 无主（躺在地上，不生效）。
+        ///
+        /// 归属口径（team-lead 裁定，2026-10-31）：
+        ///   手持 > 随车，其中「随车」归属**把它装上车的人**（<see cref="CursedItem.CartOwnerNetId"/>，
+        ///   由 CartController.TryLoadFrom 在装车那一刻记下），不是当前推行者、也不是离车最近的人。
+        ///   用「最近的人」会变成谁路过谁背锅；用装车人，谁做的决定谁承担。
+        /// 货物被卸下 / 掉落 / 提交后立刻失去随车归属（OnCart 判不到），不需要额外清理。
+        /// </summary>
+        public uint CarrierOf(CursedItem item, out byte source)
         {
+            source = OwnerSourceNone;
+
             if (item == null)
             {
                 return 0;
@@ -245,13 +260,15 @@ namespace ScavengeNightmare.Curses
 
             if (prop.IsHeld && prop.Holder != null)
             {
+                source = OwnerSourceHand;
                 return prop.Holder.netId;
             }
 
             CartController cart = CartController.Instance;
-            if (cart != null && cart.Cargo != null && OnCart(cart.Cargo, prop))
+            if (cart != null && cart.Cargo != null && OnCart(cart.Cargo, prop) && item.CartOwnerNetId != 0)
             {
-                return NearestPlayer(prop.transform.position, cartCarryRadius);
+                source = OwnerSourceCart;
+                return item.CartOwnerNetId;
             }
 
             return 0;
@@ -298,7 +315,7 @@ namespace ScavengeNightmare.Curses
 
         private void AssignCarriers()
         {
-            // 1) 先算这一帧每件诅咒的归属
+            // 1) 先算这一帧每件诅咒的归属，并把裁决过程落日志
             Dictionary<CursedItem, uint> now = new();
             foreach (CursedItem item in items)
             {
@@ -307,7 +324,19 @@ namespace ScavengeNightmare.Curses
                     continue;
                 }
 
-                uint carrier = CarrierOf(item);
+                uint carrier = CarrierOf(item, out byte source);
+
+                owners.TryGetValue(item, out uint prevOwner);
+                sources.TryGetValue(item, out byte prevSource);
+
+                if (carrier != prevOwner || source != prevSource)
+                {
+                    // 查「为什么这件没生效」时不用猜：owner 为 0 就是无主，source 说明它靠什么归属。
+                    Debug.Log($"[S4B] S4B_CURSE_OWNER prop={item.CurseId} owner={carrier} source={SourceName(source)}");
+                    owners[item] = carrier;
+                    sources[item] = source;
+                }
+
                 if (carrier != 0)
                 {
                     now[item] = carrier;
@@ -345,9 +374,13 @@ namespace ScavengeNightmare.Curses
                 item.ServerSetHolder(owner);
             }
 
-            // 4) 每人最多 1 种生效，其余休眠
+            // 4) 每人最多 1 种生效，其余休眠。
+            //    归属人离线或倒地时整批保持休眠，**不转移给别人**——
+            //    否则队友会莫名其妙替你背上一件他根本没碰过的诅咒。
             foreach (KeyValuePair<uint, List<CursedItem>> kv in carried)
             {
+                bool ownerActive = OwnerActive(kv.Key);
+
                 for (int i = 0; i < kv.Value.Count; i++)
                 {
                     CursedItem item = kv.Value[i];
@@ -356,15 +389,38 @@ namespace ScavengeNightmare.Curses
                         continue;
                     }
 
-                    bool dormant = i > 0;
+                    bool dormant = i > 0 || !ownerActive;
 
                     if (item.IsDormant != dormant)
                     {
                         item.ServerSetDormant(dormant);
-                        Debug.Log($"[S4B] GATE_CURSE_DORMANT id={item.CurseId} holder={kv.Key} dormant={(dormant ? 1 : 0)}");
+                        Debug.Log($"[S4B] GATE_CURSE_DORMANT id={item.CurseId} holder={kv.Key} " +
+                                  $"dormant={(dormant ? 1 : 0)} reason={(ownerActive ? "second_curse" : "owner_inactive")}");
                     }
                 }
             }
+        }
+
+        /// <summary>归属人是否还在线且站着。掉线（对象已销毁）与倒地都算 inactive。</summary>
+        private static bool OwnerActive(uint netId)
+        {
+            if (netId == 0u || !NetworkServer.spawned.TryGetValue(netId, out NetworkIdentity identity) || identity == null)
+            {
+                return false;
+            }
+
+            PlayerVitals vitals = identity.GetComponent<PlayerVitals>();
+            return vitals != null && !vitals.IsDowned;
+        }
+
+        private static string SourceName(byte source)
+        {
+            return source switch
+            {
+                OwnerSourceHand => "hand",
+                OwnerSourceCart => "cart",
+                _ => "none"
+            };
         }
 
         private void TickLaughs(float deltaTime)
@@ -456,29 +512,6 @@ namespace ScavengeNightmare.Curses
             // 把「触发那一帧多走掉的」补回下一段：定时器只能在帧边界上触发，
             // 不补的话每段都比抽到的值多出最多 1 帧，量久了整体偏慢。
             state.wait = Mathf.Max(0f, interval - item.LaughWindup) + Mathf.Min(0f, state.wait);
-        }
-
-        private uint NearestPlayer(Vector3 position, float radius)
-        {
-            PlayerVitals best = null;
-            float bestDistance = radius;
-
-            foreach (PlayerVitals vitals in PlayerVitals.All)
-            {
-                if (vitals == null)
-                {
-                    continue;
-                }
-
-                float distance = Vector3.Distance(vitals.transform.position, position);
-                if (distance <= bestDistance)
-                {
-                    bestDistance = distance;
-                    best = vitals;
-                }
-            }
-
-            return best != null ? best.netId : 0;
         }
 
         private static CurseSpawnAnchor AnchorAt(int index)
