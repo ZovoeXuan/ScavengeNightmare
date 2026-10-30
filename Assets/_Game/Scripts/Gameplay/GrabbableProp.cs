@@ -1,3 +1,4 @@
+using ScavengeNightmare.Curses;
 using ScavengeNightmare.Networking;
 using UnityEngine;
 
@@ -48,6 +49,14 @@ namespace ScavengeNightmare.Gameplay
                 if (fragile != null)
                 {
                     return fragile.CurrentValue;
+                }
+
+                // S4B-4：未封印的诅咒物按标价 60% 计价（笑面偶 510 / 无字牌位 780）。
+                // P0 不做封印，所以这个分支恒成立；没有诅咒组件时行为一行不变。
+                CursedItem cursed = GetComponent<CursedItem>();
+                if (cursed != null)
+                {
+                    return cursed.CurrentValue;
                 }
 
                 return profile != null ? profile.value : 0;

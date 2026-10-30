@@ -1,6 +1,8 @@
 using Mirror;
 using ScavengeNightmare.Combat;
+using ScavengeNightmare.Curses;
 using ScavengeNightmare.Economy;
+using ScavengeNightmare.Gameplay;
 using ScavengeNightmare.Monsters;
 using ScavengeNightmare.Networking;
 using ScavengeNightmare.Noise;
@@ -31,6 +33,19 @@ namespace ScavengeNightmare.EditorTools
         private const string ScreamProfilePath = MonsterProfileDir + "/ScreamCan.asset";
         private const string ShopCatalogPath = "Assets/_Game/Resources/ShopCatalog.asset";
 
+        // ---- S4B-4 两件诅咒 ----
+        private const string CurseMat = "Assets/_Game/Data/Materials/PropType_Cursed.mat";
+        private const string DollProfilePath = "Assets/_Game/Data/Props/Prop_curse_doll.asset";
+        private const string TabletProfilePath = "Assets/_Game/Data/Props/Prop_curse_tablet.asset";
+        private const string DollPrefabPath = "Assets/_Game/Prefabs/Props/curse_doll.prefab";
+        private const string TabletPrefabPath = "Assets/_Game/Prefabs/Props/curse_tablet.prefab";
+
+        private static readonly (string name, CurseKind kind, Vector3 pos)[] CurseAnchors =
+        {
+            ("CurseSpawn_1_Doll", CurseKind.Doll, new Vector3(5f, 0.25f, 6f)),
+            ("CurseSpawn_2_Tablet", CurseKind.Tablet, new Vector3(-5f, 0.25f, 6f))
+        };
+
         private static readonly (string name, Vector3 pos)[] MonsterAnchors =
         {
             ("MonsterSpawn_1_Shelves", new Vector3(12f, 0.2f, 2f)),
@@ -50,6 +65,7 @@ namespace ScavengeNightmare.EditorTools
             EnsurePlayerComponents();
             EnsureGameRootNoiseState();
             EnsureMonsterAssets();
+            EnsureCurseAssets();
             EnsureNightComponents();
             Validate();
         }
@@ -75,6 +91,7 @@ namespace ScavengeNightmare.EditorTools
             Check(player != null && player.GetComponent<DownedHud>() != null, "player_downed_hud");
             Check(player != null && player.GetComponent<RevivePrompt>() != null, "player_revive_prompt");
             Check(player != null && player.GetComponent<NoiseHud>() != null, "player_noise_hud");
+            Check(player != null && player.GetComponent<CurseHud>() != null, "player_curse_hud");
 
             ShopCatalog catalog = AssetDatabase.LoadAssetAtPath<ShopCatalog>(ShopCatalogPath);
             Check(catalog != null && catalog.Count >= 6, $"shop_catalog_{(catalog != null ? catalog.Count : 0)}");
@@ -117,9 +134,34 @@ namespace ScavengeNightmare.EditorTools
             Check(nm != null && nm.GetComponent<S4BScreamTest>() != null, "scream_test");
             Check(nm != null && nm.GetComponent<MonsterSpawner>() != null, "monster_spawner");
             Check(nm != null && nm.GetComponent<MonsterDirector>() != null, "monster_director");
+            Check(nm != null && nm.GetComponent<CurseRuntime>() != null, "curse_runtime");
+            Check(nm != null && nm.GetComponent<S4BCurseTest>() != null, "curse_test");
+
+            CurseRuntime curseRuntime = nm != null ? nm.GetComponent<CurseRuntime>() : null;
+            if (curseRuntime != null)
+            {
+                SerializedObject so = new(curseRuntime);
+                Check(so.FindProperty("dollPrefab")?.objectReferenceValue != null, "curse_doll_prefab");
+                Check(so.FindProperty("tabletPrefab")?.objectReferenceValue != null, "curse_tablet_prefab");
+            }
+
+            GameObject dollPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DollPrefabPath);
+            GameObject tabletPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(TabletPrefabPath);
+            Check(dollPrefab != null && dollPrefab.GetComponent<CursedItem>() != null, "curse_doll_item");
+            Check(tabletPrefab != null && tabletPrefab.GetComponent<CursedItem>() != null, "curse_tablet_item");
+            Check(dollPrefab != null && dollPrefab.GetComponent<GrabbableProp>() != null, "curse_doll_grabbable");
+            Check(tabletPrefab != null && tabletPrefab.GetComponent<GrabbableProp>() != null, "curse_tablet_grabbable");
+            Check(dollPrefab != null && dollPrefab.GetComponent<NetworkIdentity>() != null, "curse_doll_identity");
+            Check(tabletPrefab != null && tabletPrefab.GetComponent<NetworkIdentity>() != null, "curse_tablet_identity");
+
+            // 数值对照 §4.4：笑面偶 2kg/850（未封印 510）、牌位 15kg/1300（未封印 780）。
+            CheckProfile(DollProfilePath, CursedItem.DollId, 2f, 850, 510);
+            CheckProfile(TabletProfilePath, CursedItem.TabletId, 15f, 1300, 780);
 
             int monsterAnchors = Object.FindObjectsByType<MonsterSpawnAnchor>(FindObjectsSortMode.None).Length;
             Check(monsterAnchors == MonsterAnchors.Length, $"monster_anchors_{monsterAnchors}");
+            int curseAnchors = Object.FindObjectsByType<CurseSpawnAnchor>(FindObjectsSortMode.None).Length;
+            Check(curseAnchors == CurseAnchors.Length, $"curse_anchors_{curseAnchors}");
             int patrolAnchors = Object.FindObjectsByType<ScavengeNightmare.Gameplay.PatrolAnchor>(FindObjectsSortMode.None).Length;
             Check(patrolAnchors >= 5, $"patrol_anchors_{patrolAnchors}");
 
@@ -133,8 +175,42 @@ namespace ScavengeNightmare.EditorTools
 
             if (failures == 0)
             {
-                Debug.Log($"[S4B] S4B_VALIDATE_OK vitals=1 revive=1 wipe=1 downedHud=1 shop6=1 tests=7 " +
-                          $"monsters={monsterAnchors} monsterKinds=3 noiseHud=1 monsterPrefab=1 noiseState=1");
+                Debug.Log($"[S4B] S4B_VALIDATE_OK vitals=1 revive=1 wipe=1 downedHud=1 shop6=1 tests=8 " +
+                          $"monsters={monsterAnchors} monsterKinds=3 noiseHud=1 monsterPrefab=1 noiseState=1 " +
+                          $"curseAnchors={curseAnchors} curseKinds=2 curseHud=1");
+            }
+        }
+
+        /// <summary>诅咒物件档的三项数值：质量、标价、未封印 60% 后的价值。</summary>
+        private static void CheckProfile(string path, string id, float mass, int listed, int unsealed)
+        {
+            PropPhysicsProfile profile = AssetDatabase.LoadAssetAtPath<PropPhysicsProfile>(path);
+
+            if (profile == null)
+            {
+                Debug.LogError($"[S4B] S4B_VALIDATE_FAIL check=curse_profile_missing_{id}");
+                return;
+            }
+
+            if (profile.id != id)
+            {
+                Debug.LogError($"[S4B] S4B_VALIDATE_FAIL check=curse_profile_id want={id} actual={profile.id}");
+            }
+
+            if (Mathf.Abs(profile.mass - mass) > 0.001f)
+            {
+                Debug.LogError($"[S4B] S4B_VALIDATE_FAIL check=curse_profile_mass_{id} want={mass} actual={profile.mass}");
+            }
+
+            if (profile.value != listed)
+            {
+                Debug.LogError($"[S4B] S4B_VALIDATE_FAIL check=curse_profile_value_{id} want={listed} actual={profile.value}");
+            }
+
+            int discounted = Mathf.RoundToInt(listed * CursedItem.UnsealedValueRate);
+            if (discounted != unsealed)
+            {
+                Debug.LogError($"[S4B] S4B_VALIDATE_FAIL check=curse_profile_unsealed_{id} want={unsealed} actual={discounted}");
             }
         }
 
@@ -179,6 +255,12 @@ namespace ScavengeNightmare.EditorTools
                 changed = true;
             }
 
+            if (prefab.GetComponent<CurseHud>() == null)
+            {
+                prefab.AddComponent<CurseHud>();
+                changed = true;
+            }
+
             if (!changed)
             {
                 return;
@@ -211,6 +293,20 @@ namespace ScavengeNightmare.EditorTools
             changed |= AddIfMissing<S4BGreeterTest>(nm.gameObject);
             changed |= AddIfMissing<S4BScreamTest>(nm.gameObject);
             changed |= AddIfMissing<MonsterDirector>(nm.gameObject);
+            changed |= AddIfMissing<CurseRuntime>(nm.gameObject);
+            changed |= AddIfMissing<S4BCurseTest>(nm.gameObject);
+
+            GameObject dollPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DollPrefabPath);
+            GameObject tabletPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(TabletPrefabPath);
+
+            CurseRuntime curseRuntime = nm.GetComponent<CurseRuntime>();
+            if (curseRuntime != null)
+            {
+                SerializedObject curseSo = new(curseRuntime);
+                changed |= AssignSpawnerPrefab(curseSo, "dollPrefab", dollPrefab);
+                changed |= AssignSpawnerPrefab(curseSo, "tabletPrefab", tabletPrefab);
+                curseSo.ApplyModifiedPropertiesWithoutUndo();
+            }
 
             MonsterSpawner spawner = nm.GetComponent<MonsterSpawner>();
             if (spawner == null)
@@ -233,8 +329,9 @@ namespace ScavengeNightmare.EditorTools
             }
 
             changed |= EnsureMonsterAnchors();
+            changed |= EnsureCurseAnchors();
 
-            foreach (GameObject prefab in new[] { monsterPrefab, greeterPrefab, screamPrefab })
+            foreach (GameObject prefab in new[] { monsterPrefab, greeterPrefab, screamPrefab, dollPrefab, tabletPrefab })
             {
                 if (prefab == null)
                 {
@@ -341,6 +438,357 @@ namespace ScavengeNightmare.EditorTools
             PrefabUtility.SavePrefabAsset(prefab);
             AssetDatabase.SaveAssets();
             Debug.Log("[S4B] S4B_NOISE_STATE_ADDED");
+        }
+
+        // ==================== S4B-4 两件诅咒 ====================
+
+        /// <summary>
+        /// 两件诅咒的物件档 + 预制体。数值逐字照抄 §4.4：
+        /// 笑面偶 2kg / 850 / 未封印 510；无字牌位 15kg / 1300 / 未封印 780。
+        /// 折价率不在档里写，统一在 <see cref="CursedItem.UnsealedValueRate"/>：
+        /// 写两处迟早会出现「表改了代码没改」的半吊子口径。
+        /// </summary>
+        private static void EnsureCurseAssets()
+        {
+            S4ASceneSetup.EnsureFolder("Assets/_Game/Data/Props");
+            S4ASceneSetup.EnsureFolder("Assets/_Game/Prefabs/Props");
+
+            Material material = EnsureCurseMaterial();
+
+            PropPhysicsProfile doll = EnsureCurseProfile(DollProfilePath, CursedItem.DollId, "笑面偶", 2f, 850);
+            PropPhysicsProfile tablet = EnsureCurseProfile(TabletProfilePath, CursedItem.TabletId, "无字牌位", 15f, 1300);
+
+            EnsureCursePrefab(DollPrefabPath, "curse_doll", doll, material, CurseKind.Doll,
+                PrimitiveType.Capsule, new Vector3(0.16f, 0.22f, 0.16f), new Vector3(0.32f, 0.5f, 0.32f),
+                0f, 0f);
+
+            EnsureCursePrefab(TabletPrefabPath, "curse_tablet", tablet, material, CurseKind.Tablet,
+                PrimitiveType.Cube, new Vector3(0.26f, 0.42f, 0.07f), new Vector3(0.3f, 0.5f, 0.12f),
+                1.5f, 0.05f);
+
+            AssetDatabase.SaveAssets();
+        }
+
+        private static Material EnsureCurseMaterial()
+        {
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(CurseMat);
+            if (material != null)
+            {
+                return material;
+            }
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null)
+            {
+                shader = Shader.Find("Standard");
+            }
+
+            material = new Material(shader);
+            Color cursed = new(0.58f, 0.30f, 0.66f, 1f);
+            material.color = cursed;
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", cursed);
+            }
+
+            AssetDatabase.CreateAsset(material, CurseMat);
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static PropPhysicsProfile EnsureCurseProfile(
+            string path, string id, string displayName, float mass, int value)
+        {
+            PropPhysicsProfile profile = AssetDatabase.LoadAssetAtPath<PropPhysicsProfile>(path);
+            bool created = profile == null;
+
+            if (created)
+            {
+                profile = ScriptableObject.CreateInstance<PropPhysicsProfile>();
+                AssetDatabase.CreateAsset(profile, path);
+            }
+
+            bool changed = created;
+
+            // propType 走 Normal：诅咒的「难搞」来自 CursedItem 的规则（发笑 / 长按放下），
+            // 不该顺手把抓握手感也改了——那会让「诅咒到底改了什么」说不清。
+            if (profile.id != id) { profile.id = id; changed = true; }
+            if (profile.displayName != displayName) { profile.displayName = displayName; changed = true; }
+            if (Mathf.Abs(profile.mass - mass) > 0.001f) { profile.mass = mass; changed = true; }
+            if (profile.value != value) { profile.value = value; changed = true; }
+            if (profile.propType != PropType.Normal) { profile.propType = PropType.Normal; changed = true; }
+            if (profile.isFragile) { profile.isFragile = false; changed = true; }
+
+            if (changed)
+            {
+                EditorUtility.SetDirty(profile);
+            }
+
+            return profile;
+        }
+
+        private static void EnsureCursePrefab(
+            string path, string rootName, PropPhysicsProfile profile, Material material,
+            CurseKind kind, PrimitiveType shape, Vector3 visualScale, Vector3 colliderSize,
+            float requiredReleaseHold, float handShakeAmplitude)
+        {
+            GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+
+            if (existing != null)
+            {
+                RepairCursePrefab(existing, profile, material, kind, requiredReleaseHold, handShakeAmplitude);
+                return;
+            }
+
+            GameObject root = new(rootName);
+
+            BoxCollider collider = root.AddComponent<BoxCollider>();
+            collider.size = colliderSize;
+            collider.center = new Vector3(0f, colliderSize.y * 0.5f, 0f);
+
+            GameObject visual = GameObject.CreatePrimitive(shape);
+            visual.name = "Visual";
+            visual.transform.SetParent(root.transform, false);
+            visual.transform.localPosition = new Vector3(0f, colliderSize.y * 0.5f, 0f);
+            visual.transform.localScale = visualScale;
+
+            // 前兆抖动改的是 Visual 的 localPosition：本体是刚体，直接动根 Transform
+            // 会和物理求解打架（症状是货物抖着抖着被弹飞）。
+            Object.DestroyImmediate(visual.GetComponent<Collider>());
+
+            MeshRenderer renderer = visual.GetComponent<MeshRenderer>();
+            if (renderer != null && material != null)
+            {
+                renderer.sharedMaterial = material;
+            }
+
+            root.AddComponent<NetworkIdentity>();
+
+            GrabbableProp grabbable = root.AddComponent<GrabbableProp>();
+            SerializedObject grabSo = new(grabbable);
+            SerializedProperty profileProp = grabSo.FindProperty("profile");
+            if (profileProp != null)
+            {
+                profileProp.objectReferenceValue = profile;
+                grabSo.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            root.AddComponent<NetworkedProp>();
+
+            CursedItem cursed = root.AddComponent<CursedItem>();
+            ConfigureCurseItem(cursed, kind, requiredReleaseHold, handShakeAmplitude);
+
+            PrefabUtility.SaveAsPrefabAsset(root, path);
+            Object.DestroyImmediate(root);
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[S4B] S4B_CURSE_PREFAB_CREATED path={path}");
+        }
+
+        /// <summary>已存在的预制体就地补齐（幂等），避免「预制体早就有了、改了表却没生效」。</summary>
+        private static void RepairCursePrefab(
+            GameObject prefab, PropPhysicsProfile profile, Material material, CurseKind kind,
+            float requiredReleaseHold, float handShakeAmplitude)
+        {
+            bool changed = false;
+
+            if (prefab.GetComponent<NetworkIdentity>() == null)
+            {
+                prefab.AddComponent<NetworkIdentity>();
+                changed = true;
+            }
+
+            GrabbableProp grabbable = prefab.GetComponent<GrabbableProp>();
+            if (grabbable == null)
+            {
+                grabbable = prefab.AddComponent<GrabbableProp>();
+                changed = true;
+            }
+
+            SerializedObject grabSo = new(grabbable);
+            SerializedProperty profileProp = grabSo.FindProperty("profile");
+            if (profileProp != null && profileProp.objectReferenceValue == null)
+            {
+                profileProp.objectReferenceValue = profile;
+                grabSo.ApplyModifiedPropertiesWithoutUndo();
+                changed = true;
+            }
+
+            if (prefab.GetComponent<NetworkedProp>() == null)
+            {
+                prefab.AddComponent<NetworkedProp>();
+                changed = true;
+            }
+
+            CursedItem cursed = prefab.GetComponent<CursedItem>();
+            if (cursed == null)
+            {
+                cursed = prefab.AddComponent<CursedItem>();
+                changed = true;
+            }
+
+            if (ConfigureCurseItem(cursed, kind, requiredReleaseHold, handShakeAmplitude))
+            {
+                changed = true;
+            }
+
+            Transform visual = prefab.transform.Find("Visual");
+            MeshRenderer renderer = visual != null ? visual.GetComponent<MeshRenderer>() : null;
+            if (renderer != null && material != null && renderer.sharedMaterial != material)
+            {
+                renderer.sharedMaterial = material;
+                changed = true;
+            }
+
+            if (!changed)
+            {
+                return;
+            }
+
+            EditorUtility.SetDirty(prefab);
+            PrefabUtility.SavePrefabAsset(prefab);
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[S4B] S4B_CURSE_PREFAB_REPAIRED path={AssetDatabase.GetAssetPath(prefab)}");
+        }
+
+        private static bool ConfigureCurseItem(
+            CursedItem cursed, CurseKind kind, float requiredReleaseHold, float handShakeAmplitude)
+        {
+            string id = kind == CurseKind.Tablet ? CursedItem.TabletId : CursedItem.DollId;
+            string name = kind == CurseKind.Tablet ? "无字牌位" : "笑面偶";
+
+            SerializedObject so = new(cursed);
+            bool changed = false;
+
+            changed |= SetEnum(so, "kind", (int)kind);
+            changed |= SetString(so, "curseId", id);
+            changed |= SetString(so, "displayName", name);
+
+            // 发笑参数两件都写（牌位不发笑，但字段留着，将来换规则不用改结构）。
+            changed |= SetFloat(so, "laughIntervalMin", 12f);
+            changed |= SetFloat(so, "laughIntervalMax", 20f);
+            changed |= SetFloat(so, "laughWindup", 1.5f);
+            changed |= SetFloat(so, "laughNoise", 8f);
+
+            changed |= SetFloat(so, "requiredReleaseHold", requiredReleaseHold);
+            changed |= SetFloat(so, "handShakeAmplitude", handShakeAmplitude);
+
+            if (changed)
+            {
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            return changed;
+        }
+
+        /// <summary>2 个诅咒锚点，按名字就地校正位置；数量恒为 2。</summary>
+        private static bool EnsureCurseAnchors()
+        {
+            bool changed = false;
+
+            foreach (CurseSpawnAnchor anchor in Object.FindObjectsByType<CurseSpawnAnchor>(FindObjectsSortMode.None))
+            {
+                bool wanted = false;
+
+                foreach ((string name, CurseKind kind, Vector3 pos) in CurseAnchors)
+                {
+                    if (anchor.name != name)
+                    {
+                        continue;
+                    }
+
+                    wanted = true;
+
+                    if ((anchor.transform.position - pos).sqrMagnitude > 0.0001f)
+                    {
+                        anchor.transform.position = pos;
+                        EditorUtility.SetDirty(anchor);
+                        changed = true;
+                    }
+
+                    SerializedObject so = new(anchor);
+                    if (SetEnum(so, "curse", (int)kind))
+                    {
+                        so.ApplyModifiedPropertiesWithoutUndo();
+                        changed = true;
+                    }
+
+                    break;
+                }
+
+                if (!wanted)
+                {
+                    Object.DestroyImmediate(anchor.gameObject);
+                    changed = true;
+                }
+            }
+
+            foreach ((string name, CurseKind kind, Vector3 pos) in CurseAnchors)
+            {
+                bool exists = false;
+                foreach (CurseSpawnAnchor anchor in Object.FindObjectsByType<CurseSpawnAnchor>(FindObjectsSortMode.None))
+                {
+                    if (anchor.name == name)
+                    {
+                        exists = true;
+                        break;
+                    }
+                }
+
+                if (exists)
+                {
+                    continue;
+                }
+
+                GameObject go = new(name);
+                go.transform.position = pos;
+                CurseSpawnAnchor created = go.AddComponent<CurseSpawnAnchor>();
+
+                SerializedObject so = new(created);
+                SetEnum(so, "curse", (int)kind);
+                so.ApplyModifiedPropertiesWithoutUndo();
+
+                EditorUtility.SetDirty(created);
+                EditorUtility.SetDirty(go);
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private static bool SetFloat(SerializedObject so, string field, float value)
+        {
+            SerializedProperty prop = so.FindProperty(field);
+            if (prop == null || Mathf.Abs(prop.floatValue - value) < 0.0001f)
+            {
+                return false;
+            }
+
+            prop.floatValue = value;
+            return true;
+        }
+
+        private static bool SetString(SerializedObject so, string field, string value)
+        {
+            SerializedProperty prop = so.FindProperty(field);
+            if (prop == null || prop.stringValue == value)
+            {
+                return false;
+            }
+
+            prop.stringValue = value;
+            return true;
+        }
+
+        private static bool SetEnum(SerializedObject so, string field, int value)
+        {
+            SerializedProperty prop = so.FindProperty(field);
+            if (prop == null || prop.enumValueIndex == value)
+            {
+                return false;
+            }
+
+            prop.enumValueIndex = value;
+            return true;
         }
 
         /// <summary>空眼：数值表 + 材质 + 占位胶囊预制体。数值全部在 SO 里，预制体只负责结构。</summary>

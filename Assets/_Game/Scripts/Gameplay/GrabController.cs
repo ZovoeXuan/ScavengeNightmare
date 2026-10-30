@@ -1,4 +1,5 @@
 using Mirror;
+using ScavengeNightmare.Curses;
 using ScavengeNightmare.Networking;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -43,6 +44,11 @@ namespace ScavengeNightmare.Gameplay
         /// <summary>Story 3：双手被占用（折叠抱车中）。默认 false。</summary>
         private bool handsBusy;
 
+        /// <summary>S4B-4：诅咒物「长按放下」。客户端只上报按下/松开两个边沿，计时由服务端做。</summary>
+        private bool putDownHeld;
+        private bool putDownHeldLocal;
+        private float putDownAccum;
+
         /// <summary>D8：角色身份 × 缺点牌。未配置时为中性值，行为与 D7 一致。</summary>
         private Traits.PlayerLoadout Loadout => traits != null ? traits.Loadout : Traits.PlayerLoadout.Neutral;
 
@@ -83,7 +89,7 @@ namespace ScavengeNightmare.Gameplay
         {
             if (isServer && isHolding)
             {
-                ServerRelease(false);
+                ServerRelease(false, true);
             }
 
             SetFocus(null);
@@ -91,13 +97,30 @@ namespace ScavengeNightmare.Gameplay
 
         private void Update()
         {
-            if (!isLocalPlayer || viewCamera == null || !inputEnabled)
+            if (!isLocalPlayer)
+            {
+                return;
+            }
+
+            // 诅咒物的「长按放下」不能受 inputEnabled 影响：
+            // 4A/4B 的自动化一律把这个开关关掉（否则「没按住左键」会在下一帧把货扔出去），
+            // 而放下的长按恰恰是这些用例要驱动的动作。
+            UpdateCursePutDown();
+
+            if (viewCamera == null || !inputEnabled)
             {
                 return;
             }
 
             if (isHolding)
             {
+                // 无字牌位没有「松手就扔」这条路（§4.4：不能秒扔）。
+                // 想放下只能长按 1.5s，中途松手会被服务端打回 GATE_CURSE_HOLD_REJECT。
+                if (RequiredReleaseHold() > 0f)
+                {
+                    return;
+                }
+
                 Mouse mouse = Mouse.current;
                 if (mouse == null || !mouse.leftButton.isPressed)
                 {
@@ -118,12 +141,17 @@ namespace ScavengeNightmare.Gameplay
 
         private void FixedUpdate()
         {
-            if (!isServer || !isHolding)
+            if (!isServer)
             {
                 return;
             }
 
-            ServerHoldStep();
+            if (isHolding)
+            {
+                ServerHoldStep();
+            }
+
+            ServerPutDownStep();
         }
 
         private GrabbableProp Probe()
@@ -248,6 +276,17 @@ namespace ScavengeNightmare.Gameplay
         [Command]
         private void CmdRequestRelease(bool asThrow)
         {
+            // 诅咒物的脱手只能由服务端裁决：长按累计在服务端，倒地/装车这类也是服务端动作。
+            // 客户端直接喊「放手」一律不受理——否则改个包就能绕过 1.5s，
+            // 而「长按」的整个意义就是不信任客户端的计时。
+            float need = RequiredReleaseHold();
+            if (need > 0f)
+            {
+                Debug.Log($"[S4B] GATE_CURSE_HOLD_REJECT need={need:F1} actual=0.00 " +
+                          $"netId={netId} reason=client_release");
+                return;
+            }
+
             ServerRelease(asThrow);
         }
 
@@ -295,6 +334,26 @@ namespace ScavengeNightmare.Gameplay
 
         private void ServerRelease(bool asThrow)
         {
+            ServerRelease(asThrow, false);
+        }
+
+        /// <param name="force">true = 绕过「长按放下」闸门（倒地、双手被占、超出脱手距离、断开连接）。</param>
+        private void ServerRelease(bool asThrow, bool force)
+        {
+            float need = RequiredReleaseHold();
+
+            // 倒地强制脱手优先于诅咒闸门：4B-1 的「倒地必须掉手持物」不能被一件货挡住。
+            bool downed = vitals != null && vitals.IsDowned;
+
+            // 只堵「扔」。脱手（装车、被门卡住、抱车、断线）由各条服务端路径自己 force，
+            // 因为 §4.4 说的是「不能秒扔」，不是「不许任何东西把它拿走」。
+            if (!force && !downed && need > 0f && asThrow && putDownAccum < need)
+            {
+                Debug.Log($"[S4B] GATE_CURSE_HOLD_REJECT need={need:F1} actual={putDownAccum:F2} " +
+                          $"netId={netId} reason=instant_release");
+                return;
+            }
+
             GrabbableProp prop = heldProp;
             heldProp = null;
             isHolding = false;
@@ -339,7 +398,7 @@ namespace ScavengeNightmare.Gameplay
             PropPhysicsProfile profile = heldProp.Profile;
             if (body == null || profile == null)
             {
-                ServerRelease(false);
+                ServerRelease(false, true);
                 return;
             }
 
@@ -358,7 +417,7 @@ namespace ScavengeNightmare.Gameplay
             {
                 // 被门框 / 墙卡住：直接脱手，而不是硬拽穿模
                 Debug.Log($"[S4A] S4A_HOLD_RELEASE id={profile.id} delta={delta.magnitude:F2} break={breakDistance:F2} gear={gearScale:F2} com={body.worldCenterOfMass} target={target}");
-                ServerRelease(false);
+                ServerRelease(false, true);
                 return;
             }
 
@@ -428,6 +487,21 @@ namespace ScavengeNightmare.Gameplay
             float pitch = motor != null ? motor.ViewPitchDeg : 0f;
             Vector3 dir = Quaternion.AngleAxis(pitch, transform.right) * transform.forward;
 
+            // S4B-4：抓着无字牌位时手抖。抖动加在服务端算出来的持物目标点上，
+            // 所以四个人都能看见端不稳，不只是本地画面在晃。
+            if (isHolding && heldProp != null)
+            {
+                CursedItem cursed = heldProp.GetComponent<CursedItem>();
+                if (cursed != null && cursed.HandShakeAmplitude > 0f)
+                {
+                    shakePhase += Time.fixedDeltaTime * 9f;
+                    float jitterX = Mathf.PerlinNoise(shakePhase, 0.17f) - 0.5f;
+                    float jitterY = Mathf.PerlinNoise(0.63f, shakePhase) - 0.5f;
+                    dir = (dir + transform.right * (jitterX * cursed.HandShakeAmplitude)
+                              + transform.up * (jitterY * cursed.HandShakeAmplitude)).normalized;
+                }
+            }
+
             Traits.PlayerLoadout load = Loadout;
             if (load.ShakyHands && isHolding && load.ShakeAmplitude > 0f)
             {
@@ -463,7 +537,98 @@ namespace ScavengeNightmare.Gameplay
 
             if (busy && isHolding)
             {
-                RequestRelease(false);
+                // 强制：不许出现「一手抱车、一手抱着甩不掉的牌位」这种物理上不成立的状态。
+                if (isServer)
+                {
+                    ServerRelease(false, true);
+                }
+                else
+                {
+                    CmdForceRelease();
+                }
+            }
+        }
+
+        // ---------- S4B-4：诅咒物的长按放下 ----------
+
+        /// <summary>手持物要求的放下长按秒数；普通货恒为 0。</summary>
+        private float RequiredReleaseHold()
+        {
+            GrabbableProp prop = heldProp;
+            if (prop == null)
+            {
+                return 0f;
+            }
+
+            CursedItem cursed = prop.GetComponent<CursedItem>();
+            return cursed != null ? cursed.RequiredReleaseHold : 0f;
+        }
+
+        /// <summary>
+        /// 客户端只上报「按下 / 松开」两个边沿，长按多久由服务端自己累计。
+        /// 反过来（客户端报时长）等于把闸门交给客户端，改个包就能秒扔。
+        /// </summary>
+        private void UpdateCursePutDown()
+        {
+            bool want = RequiredReleaseHold() > 0f && CurseInput.PutDownHeld;
+
+            if (want == putDownHeldLocal)
+            {
+                return;
+            }
+
+            putDownHeldLocal = want;
+            CmdSetPutDown(want);
+        }
+
+        [Command]
+        private void CmdSetPutDown(bool value)
+        {
+            putDownHeld = value;
+        }
+
+        [Command]
+        private void CmdForceRelease()
+        {
+            ServerRelease(false, true);
+        }
+
+        private void ServerPutDownStep()
+        {
+            float need = RequiredReleaseHold();
+
+            if (need <= 0f)
+            {
+                putDownAccum = 0f;
+                putDownHeld = false;
+                return;
+            }
+
+            if (putDownHeld)
+            {
+                putDownAccum += Time.fixedDeltaTime;
+
+                if (putDownAccum >= need)
+                {
+                    float actual = putDownAccum;
+                    putDownAccum = 0f;
+                    putDownHeld = false;
+                    Debug.Log($"[S4B] GATE_CURSE_HOLD_OK need={need:F1} actual={actual:F2} netId={netId}");
+                    ServerRelease(false, true);
+                }
+
+                return;
+            }
+
+            if (putDownAccum > 0f)
+            {
+                float actual = putDownAccum;
+                putDownAccum = 0f;
+
+                if (actual < need)
+                {
+                    Debug.Log($"[S4B] GATE_CURSE_HOLD_REJECT need={need:F1} actual={actual:F2} netId={netId}");
+                }
             }
         }
     }

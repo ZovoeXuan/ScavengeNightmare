@@ -55,6 +55,48 @@ if not exist "%CASES%" (
   exit /b 2
 )
 
+rem --- stale binary guard ---------------------------------------------------
+rem A green run against an old binary is worse than a red run: every case below
+rem would be exercised on code that is not in the package. Turn "did you
+rem rebuild?" from a discipline into a machine check.
+rem
+rem MEASURED ON THIS PROJECT: Unity's incremental build does NOT rewrite the
+rem player .exe stub when only managed code changed - the stub stayed at
+rem 2026/10/29 15:12 while ScavengeNightmare_Data\Managed\Assembly-CSharp.dll
+rem moved to 2026/10/31 01:07. Comparing the exe alone would therefore flag
+rem EVERY run as stale and lock the gate shut. The package age is taken as the
+rem NEWEST of exe / managed assembly / globalgamemanagers, which all move on a
+rem real rebuild.
+rem
+rem Timestamps come from %%~tF (fixed width "YYYY/MM/DD HH:MM"), folded into a
+rem zero-padded 12-char key so a lexicographic compare is chronological.
+set "BINDATA=%ROOT%\Builds\Sprint4A\ScavengeNightmare_Data"
+set "BINKEY=0"
+set "SRCKEY=0"
+
+for %%F in ("%EXE%" "%BINDATA%\Managed\Assembly-CSharp.dll" "%BINDATA%\globalgamemanagers") do (
+  if exist "%%~F" (
+    set "RAW=%%~tF"
+    set "KEY=!RAW:~0,4!!RAW:~5,2!!RAW:~8,2!!RAW:~11,2!!RAW:~14,2!"
+    if "!KEY!" GTR "!BINKEY!" set "BINKEY=!KEY!"
+  )
+)
+
+for /r "%ROOT%\Assets" %%F in (*.cs *.prefab *.unity *.asset *.mat *.physicMaterial *.meta) do (
+  set "RAW=%%~tF"
+  set "KEY=!RAW:~0,4!!RAW:~5,2!!RAW:~8,2!!RAW:~11,2!!RAW:~14,2!"
+  if "!KEY!" GTR "!SRCKEY!" set "SRCKEY=!KEY!"
+)
+
+if "%SRCKEY%" GTR "%BINKEY%" (
+  echo S4_REGRESSION_FAIL reason=stale_binary src=%SRCKEY% bin=%BINKEY%
+  echo   Assets are newer than the built package - rebuild first:
+  echo   Unity -batchmode -quit -projectPath "%ROOT%" -executeMethod BuildWindows.Build -map=sprint4a
+  exit /b 2
+)
+
+echo STALE_CHECK_OK src=%SRCKEY% bin=%BINKEY%
+
 if not exist "%BASE%" mkdir "%BASE%"
 
 rem --- detach wrapper -------------------------------------------------------

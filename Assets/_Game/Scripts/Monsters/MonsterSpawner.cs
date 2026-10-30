@@ -58,7 +58,7 @@ namespace ScavengeNightmare.Monsters
             }
 
             // 4A 基线进程不生成怪；两条 4B-2 用例自己精确控制生成位置。
-            if (S4ACli.Is4ARun || S4ACli.Any("-s4bnoise", "-s4bmon", "-s4bgreeter", "-s4bscream"))
+            if (S4ACli.Is4ARun || S4ACli.Any("-s4bnoise", "-s4bmon", "-s4bgreeter", "-s4bscream", "-s4bcurse", "-s4bleg"))
             {
                 Debug.Log("[S4B] S4B_MON_SPAWN_SKIP reason=test_controlled");
                 yield break;
