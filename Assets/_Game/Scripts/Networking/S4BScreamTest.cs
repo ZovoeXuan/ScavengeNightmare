@@ -368,6 +368,14 @@ namespace ScavengeNightmare.Networking
 
         private GrabbableProp FindFreeProp(GrabbableProp exclude)
         {
+            // FindObjectsByType(..., None) 的返回顺序是未定义的，所以以前每次跑"手上拿哪个、
+            // 扔出去哪个"都不一样；投掷物的质量/碰撞体跟着变，跟 1.5s 前摇一撞就时红时绿
+            // （preempt_never_triggered）。这里改成按 Profile.id 序数取最小，让被选中的道具恒定。
+            // 只消除"选哪个"的随机性：不挑更轻更快的道具，也不放宽任何断言窗口。
+            // 同 id 的多个实例属性完全一致，因此并列时挑哪一个都不影响物理表现。
+            GrabbableProp best = null;
+            string bestId = null;
+
             foreach (GrabbableProp prop in FindObjectsByType<GrabbableProp>(FindObjectsSortMode.None))
             {
                 if (prop == null || prop == exclude || prop.IsHeld || prop.Body == null)
@@ -375,10 +383,23 @@ namespace ScavengeNightmare.Networking
                     continue;
                 }
 
-                return prop;
+                string id = prop.Profile != null ? prop.Profile.id : string.Empty;
+
+                if (best == null || System.StringComparer.Ordinal.Compare(id, bestId) < 0)
+                {
+                    best = prop;
+                    bestId = id;
+                }
             }
 
-            return null;
+            if (best == null)
+            {
+                Debug.LogWarning("[S4B] S4B_SCREAM_NO_FREE_PROP");
+                return null;
+            }
+
+            Debug.Log($"[S4B] S4B_SCREAM_PICK prop={bestId}");
+            return best;
         }
 
         private IEnumerator WaitFor(System.Func<bool> condition, float seconds, string failReason)

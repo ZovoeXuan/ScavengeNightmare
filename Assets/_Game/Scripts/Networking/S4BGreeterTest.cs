@@ -212,7 +212,6 @@ namespace ScavengeNightmare.Networking
             {
                 Debug.Log($"[S4B] S4B_GREETER_OK watchedDisplacement={lastFrozenDistance:F2} windup={lastDashSeconds:F2} " +
                           $"dash08={lastDashDistance:F2} wallStun={lastWallStun:F2} damage={lastDamage} ok=True");
-                Debug.Log("[S4B] S4B_MON_OK monsters=3 states=7 unattributed=0");
             }
             else
             {
