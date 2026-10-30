@@ -56,6 +56,7 @@ namespace ScavengeNightmare.EditorTools
             RemoveRoots(scene, "EvacZone", "EvacSettlement", "TraitBootstrap");
             RebuildAnchors(scene);
             EnsureQuotaTerminal(scene);
+            EnsureShop(scene);
             EnsureCartInScene(scene);
             EnsureBootstrap(scene, prefab, cartPrefab);
             RegisterPrefab(scene, prefab);
@@ -71,7 +72,9 @@ namespace ScavengeNightmare.EditorTools
             int anchors = UnityEngine.Object.FindObjectsByType<PropSpawnAnchor>(FindObjectsSortMode.None).Length;
             int terminals = UnityEngine.Object.FindObjectsByType<QuotaTerminal>(FindObjectsSortMode.None).Length;
             int traits = UnityEngine.Object.FindObjectsByType<Traits.TraitBootstrap>(FindObjectsSortMode.None).Length;
-            Debug.Log($"[S4A] S4A_SETUP_OK scene=Night1 anchors={anchors} quotaTerminal={terminals} traits={traits}");
+            int shops = UnityEngine.Object.FindObjectsByType<ShopTerminal>(FindObjectsSortMode.None).Length;
+            ShopCatalog catalog = AssetDatabase.LoadAssetAtPath<ShopCatalog>(ShopCatalogPath);
+            Debug.Log($"[S4A] S4A_SETUP_OK scene=Night1 anchors={anchors} quotaTerminal={terminals} traits={traits} shop={shops} shopItems={(catalog != null ? catalog.Count : 0)}");
         }
 
         [MenuItem("拾荒惊魂/S4A · 校验 Night1 夜路场景")]
@@ -94,6 +97,12 @@ namespace ScavengeNightmare.EditorTools
 
             int terminals = UnityEngine.Object.FindObjectsByType<QuotaTerminal>(FindObjectsSortMode.None).Length;
             Check(terminals == 1, $"quota_terminal_{terminals}");
+
+            int shops = UnityEngine.Object.FindObjectsByType<ShopTerminal>(FindObjectsSortMode.None).Length;
+            Check(shops == 1, $"shop_terminal_{shops}");
+
+            ShopCatalog catalog = AssetDatabase.LoadAssetAtPath<ShopCatalog>(ShopCatalogPath);
+            Check(catalog != null && catalog.Count >= 4, $"shop_catalog_{(catalog != null ? catalog.Count : 0)}");
 
             int traits = UnityEngine.Object.FindObjectsByType<Traits.TraitBootstrap>(FindObjectsSortMode.None).Length;
             Check(traits == 0, $"traits_none_{traits}");
@@ -277,8 +286,7 @@ namespace ScavengeNightmare.EditorTools
             }
         }
 
-        private static void EnsureQuotaTerminal(Scene scene)
-        {
+        private static void EnsureQuotaTerminal(Scene scene)        {
             if (UnityEngine.Object.FindObjectsByType<QuotaTerminal>(FindObjectsSortMode.None).Length > 0)
             {
                 return;
@@ -294,6 +302,117 @@ namespace ScavengeNightmare.EditorTools
             go.AddComponent<NetworkIdentity>();
             go.AddComponent<QuotaTerminal>();
             EditorUtility.SetDirty(go);
+        }
+
+        private const string ShopItemDir = "Assets/_Game/Data/Shop";
+        private const string ShopCatalogPath = "Assets/_Game/Resources/ShopCatalog.asset";
+
+        /// <summary>
+        /// 商店：4 件 4A 商品 + 目录资源 + 场景里的终端与 HUD。
+        /// 目录放 Resources 是有意的——账本是 DontDestroyOnLoad 的 GameRoot，换关后场景引用会丢，
+        /// Resources 加载不受换关影响。
+        /// </summary>
+        private static void EnsureShop(Scene scene)
+        {
+            EnsureFolder("Assets/_Game/Data");
+            EnsureFolder(ShopItemDir);
+            EnsureFolder("Assets/_Game/Resources");
+
+            ShopItem[] items =
+            {
+                EnsureShopItem("grip_gloves", "防滑手套", "抓握更牢：脱手阈值 ×1.5，跟随更快", 400, ShopEffect.GrabBreak, 1.5f, 1),
+                EnsureShopItem("packing_tape", "打包胶带", "把货捆在板上：横向滑移阈值 ×2", 500, ShopEffect.CartSlip, 2f, 2),
+                EnsureShopItem("flashlight", "手电筒", "F 键开关，射程 18m", 350, ShopEffect.Flashlight, 18f, 3),
+                EnsureShopItem("grip_training", "握力训练", "负重减速量 ×0.85", 900, ShopEffect.CarryPenalty, 0.85f, 4)
+            };
+
+            ShopCatalog catalog = AssetDatabase.LoadAssetAtPath<ShopCatalog>(ShopCatalogPath);
+            if (catalog == null)
+            {
+                catalog = ScriptableObject.CreateInstance<ShopCatalog>();
+                AssetDatabase.CreateAsset(catalog, ShopCatalogPath);
+                Debug.Log("[S4A] S4A_SHOP_CATALOG_CREATED path=" + ShopCatalogPath);
+            }
+
+            catalog.EditorSetItems(items);
+            EditorUtility.SetDirty(catalog);
+            AssetDatabase.SaveAssets();
+
+            ShopTerminal[] existing = UnityEngine.Object.FindObjectsByType<ShopTerminal>(FindObjectsSortMode.None);
+
+            if (existing.Length > 0)
+            {
+                // 终端现在只是普通 MonoBehaviour（Command 挂在玩家身上，场景对象没有 owner），
+                // 早先挂上的 NetworkIdentity 要摘掉，否则 Mirror 会为一个没有任何行为、
+                // 却带 Identity 的场景对象分配 sceneId。
+                foreach (ShopTerminal t in existing)
+                {
+                    NetworkIdentity id = t.GetComponent<NetworkIdentity>();
+                    if (id != null)
+                    {
+                        UnityEngine.Object.DestroyImmediate(id, true);
+                    }
+
+                    if (t.GetComponent<ScavengeNightmare.UI.ShopHUD>() == null)
+                    {
+                        t.gameObject.AddComponent<ScavengeNightmare.UI.ShopHUD>();
+                    }
+
+                    EditorUtility.SetDirty(t.gameObject);
+                }
+
+                return;
+            }
+
+            GameObject go = new("ShopTerminal");
+            go.transform.position = new Vector3(5f, 0.6f, -16.5f);
+
+            BoxCollider box = go.AddComponent<BoxCollider>();
+            box.size = new Vector3(3f, 2.4f, 3f);
+            box.isTrigger = true;
+
+            go.AddComponent<ShopTerminal>();
+            go.AddComponent<ScavengeNightmare.UI.ShopHUD>();
+            EditorUtility.SetDirty(go);
+        }
+
+        private static ShopItem EnsureShopItem(string id, string display, string desc, int price, ShopEffect effect, float magnitude, int hotkey)
+        {
+            string path = $"{ShopItemDir}/{id}.asset";
+            ShopItem item = AssetDatabase.LoadAssetAtPath<ShopItem>(path);
+
+            if (item == null)
+            {
+                item = ScriptableObject.CreateInstance<ShopItem>();
+                AssetDatabase.CreateAsset(item, path);
+            }
+
+            item.id = id;
+            item.displayName = display;
+            item.description = desc;
+            item.price = price;
+            item.maxOwned = 1;
+            item.effect = effect;
+            item.magnitude = magnitude;
+            item.hotkey = hotkey;
+
+            EditorUtility.SetDirty(item);
+            return item;
+        }
+
+        private static void EnsureFolder(string path)
+        {
+            if (AssetDatabase.IsValidFolder(path))
+            {
+                return;
+            }
+
+            int slash = path.LastIndexOf('/');
+            string parent = path.Substring(0, slash);
+            string leaf = path.Substring(slash + 1);
+
+            EnsureFolder(parent);
+            AssetDatabase.CreateFolder(parent, leaf);
         }
 
         /// <summary>
@@ -523,6 +642,11 @@ namespace ScavengeNightmare.EditorTools
             if (host.GetComponent<S4ACartTest>() == null)
             {
                 host.AddComponent<S4ACartTest>();
+            }
+
+            if (host.GetComponent<S4AShopTest>() == null)
+            {
+                host.AddComponent<S4AShopTest>();
             }
 
             EditorUtility.SetDirty(host);

@@ -34,10 +34,26 @@ namespace ScavengeNightmare.Networking
                 return;
             }
 
-            // 惰性：场景里既没有公秤也没有推车时完全不发消息，Main / Supermarket 零网络增量。
-            if (QuotaTerminal.Instance == null && ScavengeNightmare.Cart.CartController.Instance == null)
+            // 惰性：场景里既没有公秤也没有推车也没有商店时完全不发消息，Main / Supermarket 零网络增量。
+            if (QuotaTerminal.Instance == null
+                && ScavengeNightmare.Cart.CartController.Instance == null
+                && ShopTerminal.Instance == null)
             {
                 return;
+            }
+
+            if (ShopTerminal.Instance != null)
+            {
+                int buy = S4AInput.PendingBuyIndex;
+                if (buy > 0)
+                {
+                    CmdShopBuy(buy);
+                }
+
+                if (S4AInput.UndoPressed)
+                {
+                    CmdShopUndo();
+                }
             }
 
             bool held = S4AInput.InteractHeld;
@@ -67,6 +83,33 @@ namespace ScavengeNightmare.Networking
         private void CmdSetGrab(bool value)
         {
             grabHeld = value;
+        }
+
+        // 商店的 Command 必须挂在**玩家自己**身上，不能挂在场景里的 ShopTerminal 上：
+        // 场景对象没有 owner，connectionToClient 恒为 null，服务端复核距离会拿到 -1，
+        // 表现是「客户端以为在店里、服务端一律判不在店里」——实测就踩了这个坑。
+        [Command]
+        private void CmdShopBuy(int hotkey)
+        {
+            ShopTerminal terminal = ShopTerminal.Instance;
+            if (terminal == null)
+            {
+                return;
+            }
+
+            terminal.ServerHandleBuy(transform, hotkey);
+        }
+
+        [Command]
+        private void CmdShopUndo()
+        {
+            ShopTerminal terminal = ShopTerminal.Instance;
+            if (terminal == null)
+            {
+                return;
+            }
+
+            terminal.ServerHandleUndo(transform);
         }
     }
 }

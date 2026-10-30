@@ -51,5 +51,86 @@ namespace ScavengeNightmare.Economy
         }
 
         public static bool GrabHeld => AutoGrab || ManualGrab;
+
+        /// <summary>自动化购买：1–4 表示按了对应数字键，0 表示没有。</summary>
+        public static int AutoBuyIndex;
+
+        /// <summary>自动化撤销（相当于按 U）。</summary>
+        public static bool AutoUndo;
+
+        public static int PendingBuyIndex => AutoBuyIndex > 0 ? AutoBuyIndex : ManualBuyIndex;
+
+        public static bool UndoPressed => AutoUndo || ManualUndoPressed;
+
+        private static int ManualBuyIndex
+        {
+            get
+            {
+#if ENABLE_INPUT_SYSTEM
+                Keyboard keyboard = Keyboard.current;
+                if (keyboard == null)
+                {
+                    return 0;
+                }
+
+                if (keyboard.digit1Key.wasPressedThisFrame)
+                {
+                    return 1;
+                }
+
+                if (keyboard.digit2Key.wasPressedThisFrame)
+                {
+                    return 2;
+                }
+
+                if (keyboard.digit3Key.wasPressedThisFrame)
+                {
+                    return 3;
+                }
+
+                if (keyboard.digit4Key.wasPressedThisFrame)
+                {
+                    return 4;
+                }
+
+                return 0;
+#else
+                if (Input.GetKeyDown(KeyCode.Alpha1))
+                {
+                    return 1;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Alpha2))
+                {
+                    return 2;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Alpha3))
+                {
+                    return 3;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Alpha4))
+                {
+                    return 4;
+                }
+
+                return 0;
+#endif
+            }
+        }
+
+        private static bool ManualUndoPressed
+        {
+            get
+            {
+#if ENABLE_INPUT_SYSTEM
+                Keyboard keyboard = Keyboard.current;
+                return keyboard != null && keyboard.uKey.wasPressedThisFrame;
+#else
+                return Input.GetKeyDown(KeyCode.U);
+#endif
+            }
+        }
     }
 }

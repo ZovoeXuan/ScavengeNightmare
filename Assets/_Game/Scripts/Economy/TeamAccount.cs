@@ -36,6 +36,12 @@ namespace ScavengeNightmare.Economy
         [SyncVar] private int runId;
         [SyncVar] private bool quotaReached;
 
+        /// <summary>已购商品位掩码，位序 = <see cref="ShopCatalog"/> 的目录顺序。队伍共享，服务端权威。</summary>
+        [SyncVar] private int ownedMask;
+
+        /// <summary>本次进安全屋后已购买笔数（hard_cap 判据）。撤销不退计数，退了再买也算。</summary>
+        [SyncVar] private int visitPurchases;
+
         private readonly HashSet<string> committed = new();
         private bool warnedNoSave;
 
@@ -46,6 +52,19 @@ namespace ScavengeNightmare.Economy
 
         /// <summary>达标即解锁下一关入口。超额不截断（carry_over），交超了不能反而吃亏。</summary>
         public bool QuotaReached => quotaReached;
+
+        public int OwnedMask => ownedMask;
+
+        public int VisitPurchases => visitPurchases;
+
+        /// <summary>最近一笔购买 id。HUD 的「U 撤销」按它撤，玩家不用记 id。</summary>
+        public string LastPurchaseId { get; private set; } = string.Empty;
+
+        /// <summary>同一 Visit 内最多买几笔。撤销后重买也计数，所以可以稳定触发。</summary>
+        public const int HardCapPerVisit = 8;
+
+        /// <summary>撤销窗口（秒）。到点或离开安全屋都算关闭，两者取先到。</summary>
+        public const float UndoWindowSeconds = 30f;
 
         /// <summary>服务端统计，供自动化对账。</summary>
         public int AcceptedCount { get; private set; }
@@ -354,7 +373,7 @@ namespace ScavengeNightmare.Economy
         }
 
         [Server]
-        public void NextLeg(int quota)
+        public void NextLeg(int quota, string source)
         {
             int nextIndex = legIndex + 1;
             int nextQuota = quota;
@@ -388,7 +407,260 @@ namespace ScavengeNightmare.Economy
             legProgress = 0;
             legQuota = nextQuota;
             quotaReached = false;
-            Debug.Log($"[S4A] GATE_LEVEL n={legIndex} quota={legQuota} source=table before={balance} after={balance}");
+            visitPurchases = 0;
+            PurchaseWindowOpen = true;
+            PurchaseWindowClosedAt = 0f;
+            Debug.Log($"[S4A] GATE_LEVEL n={legIndex} quota={legQuota} source={source} before={balance} after={balance}");
+        }
+
+        // ==================== 商店（服务端权威） ====================
+
+        /// <summary>撤销窗口是否敞开。离开安全屋 / 换关 / 超时都会关。</summary>
+        public bool PurchaseWindowOpen { get; private set; } = true;
+
+        private float PurchaseWindowClosedAt { get; set; }
+
+        public void OpenPurchaseWindow()
+        {
+            PurchaseWindowOpen = true;
+            PurchaseWindowClosedAt = 0f;
+        }
+
+        /// <summary>
+        /// 关闭撤销窗口。<paramref name="reason"/> 只进日志，不影响状态——
+        /// 判据只有「开/关」两种，多一个中间态只会让 window_closed 变得难复现。
+        /// </summary>
+        [Server]
+        public void ClosePurchaseWindow(string reason)
+        {
+            if (!PurchaseWindowOpen)
+            {
+                return;
+            }
+
+            PurchaseWindowOpen = false;
+            PurchaseWindowClosedAt = Time.unscaledTime;
+            Debug.Log($"[S4A] S4A_SHOP_WINDOW state=closed reason={reason} balance={balance}");
+        }
+
+        public bool Owns(int index)
+        {
+            if (index < 0 || index >= 31)
+            {
+                return false;
+            }
+
+            return (ownedMask & (1 << index)) != 0;
+        }
+
+        public bool OwnsItem(string itemId)
+        {
+            ShopCatalog catalog = ShopCatalog.Instance;
+            return catalog != null && Owns(catalog.IndexOf(itemId));
+        }
+
+        /// <summary>
+        /// 七步顺序写死：find → read_only → hard_cap → already_owned → insufficient →
+        /// **TryCommit 落盘** → 改 SyncVar + 打日志。所有 Reject 都在任何写盘之前。
+        /// </summary>
+        [Server]
+        public bool TryPurchase(string itemId)
+        {
+            ShopCatalog catalog = ShopCatalog.Instance;
+            if (catalog == null)
+            {
+                Debug.LogError("[S4A] S4A_SHOP_FAIL reason=no_catalog");
+                return false;
+            }
+
+            int index = catalog.IndexOf(itemId);
+            ShopItem item = index >= 0 ? catalog.At(index) : null;
+
+            if (item == null)
+            {
+                Debug.LogError($"[S4A] S4A_SHOP_FAIL reason=unknown_item itemId={itemId}");
+                return false;
+            }
+
+            P0SaveService save = P0SaveService.Instance;
+
+            if (save == null || !save.Loaded)
+            {
+                RejectBuy(itemId, "read_only");
+                return false;
+            }
+
+            if (visitPurchases >= HardCapPerVisit)
+            {
+                RejectBuy(itemId, "hard_cap");
+                return false;
+            }
+
+            if (Owns(index))
+            {
+                RejectBuy(itemId, "already_owned");
+                return false;
+            }
+
+            if (balance < item.price)
+            {
+                RejectBuy(itemId, "insufficient");
+                return false;
+            }
+
+            long newBalance = balance - item.price;
+            string purchaseId = NextPurchaseId();
+
+            TeamSaveData next = save.Data.Clone();
+            if (next == null)
+            {
+                Debug.LogError($"[S4A] S4A_SHOP_FAIL reason=clone_failed itemId={itemId}");
+                return false;
+            }
+
+            next.balance = newBalance;
+            next.legIndex = legIndex;
+            next.legQuota = legQuota;
+            next.legProgress = legProgress;
+            next.quotaReached = quotaReached;
+            next.purchases ??= new System.Collections.Generic.List<PurchaseRecord>();
+            next.purchases.Add(new PurchaseRecord
+            {
+                purchaseId = purchaseId,
+                itemId = itemId,
+                price = item.price,
+                state = PurchaseRecord.Active,
+                legIndex = legIndex,
+                tsUnixMs = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            });
+
+            // 负向流水：购买和入账共用一张 txn 表，balance == SumFromTxns() 这条恒等式才继续成立。
+            SaveTxnRecord record = new()
+            {
+                cargoId = $"shop:{purchaseId}",
+                value = -item.price,
+                legIndex = legIndex,
+                balanceAfter = newBalance,
+                tsUnixMs = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
+
+            if (!save.TryCommit(next, record, out string saveError))
+            {
+                Debug.LogError($"[S4A] S4A_SHOP_FAIL reason={saveError} itemId={itemId}");
+                return false;
+            }
+
+            ownedMask |= 1 << index;
+            visitPurchases++;
+            balance = newBalance;
+            LastPurchaseId = purchaseId;
+
+            Debug.Log($"[S4A] GATE_BUY itemId={itemId} price={item.price} balanceAfter={balance} purchaseId={purchaseId}");
+            return true;
+        }
+
+        /// <summary>
+        /// 撤销一笔购买。退款金额**锁定记录里的原价**，不用现值——
+        /// 商品涨价后撤销不该多退钱，这是账本问题不是玩法问题。
+        /// </summary>
+        [Server]
+        public bool TryUndoPurchase(string purchaseId)
+        {
+            P0SaveService save = P0SaveService.Instance;
+            if (save == null || !save.Loaded)
+            {
+                Debug.Log($"[S4A] GATE_BUY_UNDO_REJECT purchaseId={purchaseId} state=unknown reason=window_closed balance={balance}");
+                return false;
+            }
+
+            PurchaseRecord target = null;
+            if (save.Data.purchases != null)
+            {
+                foreach (PurchaseRecord p in save.Data.purchases)
+                {
+                    if (p != null && string.Equals(p.purchaseId, purchaseId, System.StringComparison.Ordinal))
+                    {
+                        target = p;
+                        break;
+                    }
+                }
+            }
+
+            if (target == null || target.state != PurchaseRecord.Active)
+            {
+                Debug.Log($"[S4A] GATE_BUY_UNDO_REJECT purchaseId={purchaseId} state={(target == null ? "unknown" : "revoked")} reason=already_revoked balance={balance}");
+                return false;
+            }
+
+            if (!PurchaseWindowOpen)
+            {
+                Debug.Log($"[S4A] GATE_BUY_UNDO_REJECT purchaseId={purchaseId} state=active reason=window_closed balance={balance}");
+                return false;
+            }
+
+            int refund = target.price;
+            long newBalance = balance + refund;
+
+            TeamSaveData next = save.Data.Clone();
+            if (next == null)
+            {
+                Debug.LogError($"[S4A] S4A_SHOP_FAIL reason=clone_failed phase=undo purchaseId={purchaseId}");
+                return false;
+            }
+
+            next.balance = newBalance;
+            next.legIndex = legIndex;
+            next.legQuota = legQuota;
+            next.legProgress = legProgress;
+            next.quotaReached = quotaReached;
+
+            foreach (PurchaseRecord p in next.purchases)
+            {
+                if (p != null && string.Equals(p.purchaseId, purchaseId, System.StringComparison.Ordinal))
+                {
+                    p.state = PurchaseRecord.Revoked;
+                    break;
+                }
+            }
+
+            SaveTxnRecord record = new()
+            {
+                cargoId = $"shopundo:{purchaseId}",
+                value = refund,
+                legIndex = legIndex,
+                balanceAfter = newBalance,
+                tsUnixMs = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
+
+            if (!save.TryCommit(next, record, out string saveError))
+            {
+                Debug.LogError($"[S4A] S4A_SHOP_FAIL reason={saveError} phase=undo purchaseId={purchaseId}");
+                return false;
+            }
+
+            int index = ShopCatalog.Instance != null ? ShopCatalog.Instance.IndexOf(target.itemId) : -1;
+            if (index >= 0)
+            {
+                ownedMask &= ~(1 << index);
+            }
+
+            balance = newBalance;
+
+            Debug.Log($"[S4A] GATE_BUY_UNDO purchaseId={purchaseId} refund={refund} balanceAfter={balance}");
+            return true;
+        }
+
+        private void RejectBuy(string itemId, string reason)
+        {
+            Debug.Log($"[S4A] GATE_BUY_REJECT itemId={itemId} reason={reason} balance={balance} visit={visitPurchases}");
+        }
+
+        private int purchaseSeq;
+
+        private string NextPurchaseId()
+        {
+            purchaseSeq++;
+            return $"{runId}-{legIndex}-{purchaseSeq}";
         }
     }
 }
