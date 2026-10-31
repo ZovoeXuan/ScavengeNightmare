@@ -16,12 +16,14 @@
 # (S4B-5 raised it 23 -> 27); deliberately REMOVING cases must lower it in
 # the same commit.
 #
-# expected_min: 28
+# expected_min: 30
 #
-# Ordering rule: s4bdownhost must be immediately followed by s4bdownclient.
-# That pair is ONE acceptance case that needs TWO processes running at once
-# (host listens, client connects to it). run_regression.bat launches the host
-# detached on the host row and drives it from the client row.
+# Ordering rule: a detached-host row must be immediately followed by its client
+# row. Two pairs exist today:
+#   s4bdownhost    + s4bdownclient    (4B-1 revive: one acceptance case, two processes)
+#   s4clegclienthost + s4clegclient   (4C-2 team continue: one acceptance case, two processes)
+# run_regression.bat launches the host detached on the host row and drives it from
+# the client row. The pair list lives in :run_case - add new pairs there too.
 #
 # --- Sprint 4A (13) ---
 
@@ -76,3 +78,11 @@ s4acart-a4-p0|-s4acart-a4 -p0props -leg=3|S4A_A4_OK|S4B-5 A4 rerun on p0leg L3 (
 # --- Sprint 4C-1 (1) ---
 
 s4bshop8|-s4bshop8|S4B_SHOP8_OK|S4C-1 shop 8/8 durable=6; belt 1->2 slots, stamina 5.0->7.5s
+
+# --- Sprint 4C-2 (1 pair = 2 rows) ---
+# The host row is launched detached; the client row drives it. One player ready
+# in the safehouse must NOT change the scene (C3) - that is C3 evidence, not a
+# separate row.
+
+s4clegclienthost|-s4clegclienthost|S4C_LEGCLIENT_OK|S4C-2 team continue HOST half (detached, paired with next row)
+s4clegclient|-s4clegclient -address=127.0.0.1|S4C_LEGCLIENT_CLIENT_OK|S4C-2 team continue CLIENT half; lone 1/2 must not advance

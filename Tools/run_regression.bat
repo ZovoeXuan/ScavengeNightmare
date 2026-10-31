@@ -19,17 +19,18 @@ rem  7) Cases are separated by a ping cooldown so the port is really released
 rem     before the next Unity instance binds it.
 rem
 rem  Added on top of run_regression_4a.bat for Sprint 4B:
-rem  8) -s4bdownhost / -s4bdownclient are ONE acceptance case that needs TWO
-rem     processes alive at the same time (host listens, client connects).
-rem     The host row launches the exe DETACHED; the runner then waits until the
-rem     host log shows "S4A_BOOT_OK spawned=1" (that line is only printed after
-rem     NetworkServer.active is true, i.e. the host is really listening) before
-rem     starting the client row. No taskkill happens between the two rows or
-rem     the host would be killed mid-run. Both halves are then judged with the
-rem     exact same rules as a single-process case: neutral precondition,
-rem     exit code class (0 ok / 1 assert / 3 watchdog / 4 exception) and the
-rem     terminal marker. The host exit code is captured through a generated
-rem     wrapper because "start /B" does not give it back to us.
+rem  8) Detached-host rows: -s4bdownhost and -s4clegclienthost are each ONE
+rem     acceptance case that needs TWO processes alive at the same time (host
+rem     listens, client connects). Each host row launches the exe DETACHED; the
+rem     runner then waits until the host log shows "S4A_BOOT_OK spawned=1" (that
+rem     line is only printed after NetworkServer.active is true, i.e. the host is
+rem     really listening) before starting the client row. No taskkill happens
+rem     between the two rows or the host would be killed mid-run. Both halves are
+rem     then judged with the exact same rules as a single-process case: neutral
+rem     precondition, exit code class (0 ok / 1 assert / 3 watchdog / 4 exception)
+rem     and the terminal marker. The host exit code is captured through a
+rem     generated wrapper because "start /B" does not give it back to us.
+rem     The pair list lives in :run_case (PAIRHOST) - add new pairs there.
 rem
 rem  Baseline kept untouched on purpose: Tools/run_regression_4a.bat still
 rem  runs the 4A-only matrix and is the rollback path if this file misbehaves.
@@ -386,6 +387,8 @@ set /a PASS4A=0
 set /a FAIL4A=0
 set /a PASS4B=0
 set /a FAIL4B=0
+set /a PASS4C=0
+set /a FAIL4C=0
 set "PAIRPENDING="
 set "CURNAME="
 set "PREVNAME="
@@ -408,7 +411,7 @@ if defined PAIRPENDING (
   echo.
   echo   FAIL  %HOSTNAME%  reason=host_row_without_client_row
   set /a FAIL+=1
-  set /a FAIL4B+=1
+  call :count_fail
   echo   FAIL  %HOSTNAME%  reason=host_row_without_client_row >>"%BASE%\summary.txt"
   set "PAIRPENDING="
 )
@@ -437,7 +440,7 @@ exit /b 2
 
 echo.
 echo ============================================================
-echo S4_REGRESSION_BREAKDOWN s4a pass=!PASS4A! fail=!FAIL4A! s4b pass=!PASS4B! fail=!FAIL4B!
+echo S4_REGRESSION_BREAKDOWN s4a pass=!PASS4A! fail=!FAIL4A! s4b pass=!PASS4B! fail=!FAIL4B! s4c pass=!PASS4C! fail=!FAIL4C!
 
 rem Accounting first. Every row must end in exactly one verdict. If PASS+FAIL
 rem does not add up to the prescanned EXPECTED, a row was consumed without being
@@ -468,6 +471,17 @@ endlocal
 exit /b 1
 
 rem ---------------------------------------------------------------------------
+rem Per-group counters. Kept as subroutines because the same 4A/4B/4C ladder
+rem appears in every verdict path; copying it nine times invites drift.
+:count_pass
+if "%GROUP%"=="4B" (set /a PASS4B+=1) else if "%GROUP%"=="4C" (set /a PASS4C+=1) else (set /a PASS4A+=1)
+goto :eof
+
+:count_fail
+if "%GROUP%"=="4B" (set /a FAIL4B+=1) else if "%GROUP%"=="4C" (set /a FAIL4C+=1) else (set /a FAIL4A+=1)
+goto :eof
+
+rem ---------------------------------------------------------------------------
 :release_lock
 if exist "%LOCK%" del "%LOCK%" >nul 2>&1
 goto :eof
@@ -479,6 +493,12 @@ set "ARGS=%~2"
 set "MARK=%~3"
 set "LOG=%BASE%\%NAME%.log"
 
+rem Group is derived ONCE here (the name prefix is the only source) and is
+rem reused by :count_pass / :count_fail, including the host half of a pair.
+set "GROUP=4A"
+if /i "%NAME:~0,3%"=="s4b" set "GROUP=4B"
+if /i "%NAME:~0,3%"=="s4c" set "GROUP=4C"
+
 rem PREVNAME is the row judged just before this one. The port-busy abort names
 rem both, because "the previous case did not release the port" is only actionable
 rem if you know which case that was.
@@ -488,10 +508,15 @@ set "CURNAME=%NAME%"
 echo.
 echo --- %NAME%  %ARGS%
 
-rem Pair: the row right after -s4bdownhost is the client that drives it.
+rem Pair: the row right after a detached-host flag is the client that drives it.
+rem Add new pairs to the PAIRHOST list below - a missed pair starts two
+rem independent processes that fight over port 7777.
 if defined PAIRPENDING goto :pair_client
 
-if not "%ARGS:-s4bdownhost=%"=="%ARGS%" (
+set "PAIRHOST="
+if not "%ARGS:-s4bdownhost=%"=="%ARGS%" set "PAIRHOST=1"
+if not "%ARGS:-s4clegclienthost=%"=="%ARGS%" set "PAIRHOST=1"
+if defined PAIRHOST (
   call :start_host
   goto :eof
 )
@@ -535,7 +560,7 @@ if !READYWAIT! LSS 60 goto :host_ready
 
 echo   FAIL  %HOSTNAME%  reason=host_never_reached_server_active
 set /a FAIL+=1
-set /a FAIL4B+=1
+call :count_fail
 echo   FAIL  %HOSTNAME%  reason=host_never_reached_server_active >>"%BASE%\summary.txt"
 set "PAIRPENDING="
 goto :eof
@@ -564,7 +589,7 @@ if !HWAIT! LSS 150 goto :host_wait
 
 echo   FAIL  %HOSTNAME%  reason=host_never_exited
 set /a FAIL+=1
-set /a FAIL4B+=1
+call :count_fail
 echo   FAIL  %HOSTNAME%  reason=host_never_exited >>"%BASE%\summary.txt"
 goto :eof
 
@@ -590,8 +615,6 @@ goto :eof
 rem ---------------------------------------------------------------------------
 :check_log
 set "CODE=%~1"
-set "GROUP=4A"
-if /i "%NAME:~0,3%"=="s4b" set "GROUP=4B"
 
 rem No log at all means the exe never ran (bad savedir, missing dependency, an
 rem instant crash). Without this check findstr returns errorlevel 2 and we would
@@ -602,7 +625,7 @@ rem to act on.
 if not exist "%LOG%" (
   echo   FAIL  %NAME%  reason=no_log path="%LOG%"
   set /a FAIL+=1
-  if "%GROUP%"=="4B" (set /a FAIL4B+=1) else (set /a FAIL4A+=1)
+  call :count_fail
   echo   FAIL  %NAME%  reason=no_log >>"%BASE%\summary.txt"
   goto :eof
 )
@@ -617,7 +640,7 @@ findstr /c:"type=SocketException" "%LOG%" >nul 2>&1
 if not errorlevel 1 (
   echo   FAIL  %NAME%  class=port_busy exit=%CODE% previous="%PREVNAME%"
   set /a FAIL+=1
-  if "%GROUP%"=="4B" (set /a FAIL4B+=1) else (set /a FAIL4A+=1)
+  call :count_fail
   echo   FAIL  %NAME%  class=port_busy exit=%CODE% previous="%PREVNAME%" >>"%BASE%\summary.txt"
   set "ABORT=1"
   set "ABORTREASON=port_busy_by_previous_case name=%PREVNAME% port=7777"
@@ -634,7 +657,7 @@ if errorlevel 1 (
   )
   echo   FAIL  %NAME%  reason=neutral_precondition_missing
   set /a FAIL+=1
-  if "%GROUP%"=="4B" (set /a FAIL4B+=1) else (set /a FAIL4A+=1)
+  call :count_fail
   echo   FAIL  %NAME%  reason=neutral_precondition_missing >>"%BASE%\summary.txt"
   goto :eof
 )
@@ -653,7 +676,7 @@ if not "%CODE%"=="0" (
     )
   )
   set /a FAIL+=1
-  if "%GROUP%"=="4B" (set /a FAIL4B+=1) else (set /a FAIL4A+=1)
+  call :count_fail
   goto :eof
 )
 
@@ -661,7 +684,7 @@ findstr /c:"%MARK%" "%LOG%" >nul 2>&1
 if errorlevel 1 (
   echo   FAIL  %NAME%  class=marker_missing mark=%MARK%
   set /a FAIL+=1
-  if "%GROUP%"=="4B" (set /a FAIL4B+=1) else (set /a FAIL4A+=1)
+  call :count_fail
   echo   FAIL  %NAME%  class=marker_missing mark=%MARK% >>"%BASE%\summary.txt"
   goto :eof
 )
@@ -682,7 +705,7 @@ if defined EXTRA (
   if errorlevel 1 (
     echo   FAIL  %NAME%  class=extra_missing expect=%EXTRA%
     set /a FAIL+=1
-    if "%GROUP%"=="4B" (set /a FAIL4B+=1) else (set /a FAIL4A+=1)
+    call :count_fail
     echo   FAIL  %NAME%  class=extra_missing expect=%EXTRA% >>"%BASE%\summary.txt"
     goto :eof
   )
@@ -690,6 +713,6 @@ if defined EXTRA (
 
 echo   PASS  %NAME%
 set /a PASS+=1
-if "%GROUP%"=="4B" (set /a PASS4B+=1) else (set /a PASS4A+=1)
+call :count_pass
 echo   PASS  %NAME% >>"%BASE%\summary.txt"
 goto :eof

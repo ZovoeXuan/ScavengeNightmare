@@ -55,6 +55,12 @@ namespace ScavengeNightmare.Economy
         {
             base.OnStartClient();
             observedBalance = balance;
+
+            // 客户端这份 GameRoot 是 NetworkClient.SpawnPrefab() 直接实例化到**当前场景**里的，
+            // 换关时随场景卸载被销毁，账本的 SyncVar 从此断开——表现是客户端读到 0/0、
+            // 「自己明明按住了却始终没 ready」。服务端那份由 S4ABootstrap 自己做了 DDOL，
+            // 这里补客户端这份；host 模式下同一个物体已经在内，重复调用是幂等的。
+            DontDestroyOnLoad(gameObject);
         }
         [SyncVar] private int legProgress;
         [SyncVar] private int legQuota = 1800;
@@ -71,6 +77,14 @@ namespace ScavengeNightmare.Economy
         /// <summary>4B：队伍公共消耗品库存（自救针 / 急救包）。跨场景常驻，跨进程从 0 开始。</summary>
         [SyncVar] private int selfInjectorCharges;
         [SyncVar] private int medkitCharges;
+
+        /// <summary>
+        /// S4C-2：安全屋「继续」的全队确认进度。服务端权威，HUD 只读这份复制值——
+        /// 客户端自己算 ready 会在「远端玩家松手了但本地还以为按着」上与服务端分叉。
+        /// 非安全屋场景恒为 0/0，HUD 据此隐藏。
+        /// </summary>
+        [SyncVar] private int continueReady;
+        [SyncVar] private int continueTotal;
 
         /// <summary>本次 Visit 内每种消耗品买了几次（按 itemId 计数，撤销会减）。</summary>
         private readonly Dictionary<string, int> visitConsumables = new();
@@ -92,6 +106,10 @@ namespace ScavengeNightmare.Economy
 
         public int SelfInjectorCharges => selfInjectorCharges;
         public int MedkitCharges => medkitCharges;
+
+        /// <summary>S4C-2：安全屋「继续」确认进度（复制值，HUD 只读）。</summary>
+        public int ContinueReady => continueReady;
+        public int ContinueTotal => continueTotal;
 
         /// <summary>最近一笔购买 id。HUD 的「U 撤销」按它撤，玩家不用记 id。</summary>
         public string LastPurchaseId { get; private set; } = string.Empty;
@@ -536,6 +554,19 @@ namespace ScavengeNightmare.Economy
             medkitCharges--;
             Debug.Log($"[S4B] GATE_MEDKIT_USE remaining={medkitCharges}");
             return true;
+        }
+
+        /// <summary>S4C-2：把安全屋「继续」确认进度写到复制状态。只有服务端能调。</summary>
+        [Server]
+        public void ServerSetContinueProgress(int ready, int total)
+        {
+            if (continueReady == ready && continueTotal == total)
+            {
+                return;
+            }
+
+            continueReady = ready;
+            continueTotal = total;
         }
 
         // ==================== 商店（服务端权威） ====================

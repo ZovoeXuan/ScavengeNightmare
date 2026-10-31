@@ -35,9 +35,11 @@ namespace ScavengeNightmare.Networking
             }
 
             // 惰性：场景里既没有公秤也没有推车也没有商店时完全不发消息，Main / Supermarket 零网络增量。
+            // 撤离门/安全屋出口也是交互键消费者（全队「继续」确认），漏掉它会让门永远收不到按住。
             if (QuotaTerminal.Instance == null
                 && ScavengeNightmare.Cart.CartController.Instance == null
-                && ShopTerminal.Instance == null)
+                && ShopTerminal.Instance == null
+                && LevelPortal.Instance == null)
             {
                 return;
             }

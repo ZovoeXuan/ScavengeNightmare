@@ -85,7 +85,7 @@ S4B_SHOP8_OK items=8 durable=6 balanceDelta=4370 slots=2 capacity=7.5 ok=True
 - 每件都要有效果读数，买了看不出差别 = 不通过（P0 §2.5）。
 - `-s4bbelt` 重锚定：未购买基线 `pct=25.0`、`slots=1`；购买后 `pct=37.5`、`slots=2`、`S4B_BELT_OK` 保持。
 
-### S4C-2 全队「继续」确认 + `-s4blegclient`
+### S4C-2 全队「继续」确认 + `-s4clegclienthost` / `-s4clegclient`
 
 **改什么**
 
@@ -98,11 +98,14 @@ S4B_SHOP8_OK items=8 durable=6 balanceDelta=4370 slots=2 capacity=7.5 ok=True
 **判据（`S4C_LEGCLIENT_OK`）**
 
 ```
-S4C_CONTINUE_READY leg=1 netId=1 host=1 ready=1 count=1/2
-S4C_CONTINUE_WAIT leg=1 reason=not_all_ready count=1/2 seconds=2.0
+S4C_CONTINUE_READY leg=1 netId=19 host=0 ready=1 count=1/2
+S4C_CONTINUE_WAIT leg=1 reason=not_all_ready count=1/2 seconds=0.0
+S4C_CONTINUE_READY leg=1 netId=18 host=1 ready=1 count=2/2
 S4C_CONTINUE_ADVANCE leg=1 count=2/2 from=Safehouse to=Night1
-S4C_LEGCLIENT_OK legs=3 dual=1 advances=3 balance=... ok=True
+S4C_LEGCLIENT_OK legs=3 dual=1 advances=3 balance=7000 ok=True
 ```
+
+（客户端先确认、房主后按：这样 C3 的「1/2 不换关」才是真观察。实现见 DevLog 附录 A。）
 
 - 「一人到位就换关」必须判失败（这是 R4 唯一要防的假通过）。
 - 双人 3 关只证明代码路径，**不得写成 A2 通过**；A2 仍是真人门。
@@ -243,7 +246,7 @@ S4C_AUDIO_OK cues=4 distinguishable=4 failures=0 ok=True
 | T5 | 体能仍是客户端本地，无服务端校验 | P1 |
 | T6 | 工具带第三格（P0 只到 2 格） | P1 |
 | T7 | A11 只有单/双人样本，4 人未验 | P1 |
-| T8 | `-s4blegclient` 是同机双进程，不是跨机 | 验收报告如实标注 |
+| T8 | `-s4clegclient` 是同机双进程，不是跨机 | 验收报告如实标注 |
 
 ---
 
@@ -274,7 +277,7 @@ S4C_AUDIO_OK cues=4 distinguishable=4 failures=0 ok=True
 | 音频 | `S4C_AUDIO_PLAY cue= ...` | 四类可区分 |
 | 商品化汇总 | `S4B_SHOP8_OK items=8 durable=6 balanceDelta=4370 slots=2 capacity=7.5 ok=True` | 全项 |
 
-**新增开关**：`-s4bshop8`、`-s4blegclient`（配 `-address=127.0.0.1`）、`-s4baudio`、`-s4bcontinue`
+**新增开关**：`-s4bshop8`、`-s4clegclienthost` / `-s4clegclient`（配 `-address=127.0.0.1`）、`-s4baudio`、`-s4bcontinue`
 **新增工具**：`Tools/regression_4c_cases.txt`、`Tools/run_regression_4c.bat`
 
 ---

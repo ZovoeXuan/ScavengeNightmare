@@ -2,7 +2,7 @@
 
 > 范围：S4C-1 商店 8/8（工具带/体能商品化）、S4C-3 夜路商店终端清零（T12）
 > 起始：2026-10-31　计划：[`Sprint_4C_TechnicalPlan.md`](Sprint_4C_TechnicalPlan.md)
-> 状态：**4C 未收口**。S4C-2（双人 3 关 + 全队确认）、S4C-4（四类占位音）、S4C-5（真人验收包 + Q4）待做。
+> 状态：**4C 未收口**。S4C-2 已完成（见附录 A）；S4C-4（四类占位音）、S4C-5（真人验收包 + Q4）待做。
 
 ---
 
@@ -14,9 +14,10 @@
 | S4C-1 重锚定 | **完成**：默认 1 槽 / 5.0s；购买后 2 槽 / 7.5s。`-s4bbelt` 先真实购买再测，仍 `sprint=7.32 pct=36.6` |
 | S4C-3 夜路终端 | **完成**：`S4C_SHOP_TERMINAL_REMOVED scene=Night1 count=1`；`nightShop=0 safehouseShop=1` |
 | S4C-3 商店用例迁移 | **完成**：`-s4ashop` 改为「Night1 → Safehouse → 买 4 件」，`S4A_SHOP_OK` 保持 |
+| S4C-2 全队「继续」 | **完成**（附录 A）：`S4C_LEGCLIENT_OK legs=3 dual=1 advances=3 balance=7000 ok=True`；C3 1/2 不换关两侧都有证据 |
 | 4B 回归 | **15/15**：`S4B_REGRESSION_OK passes=15 expected=15` |
 | 4A 回归 | **13/13**：`S4A_REGRESSION_OK passes=13 expected=13` |
-| 未完成 | S4C-2 / S4C-4 / S4C-5；A1/A2/A10/A11 真人门仍未开；Q4 未写 |
+| 未完成 | S4C-4 / S4C-5；A1/A2/A10/A11 真人门仍未开；Q4 未写 |
 
 ---
 
@@ -159,7 +160,67 @@
 
 ## 8. 下一步
 
-1. S4C-2：全队「继续」确认 + `-s4blegclient`（含 C3 反向注入）。
+1. ~~S4C-2：全队「继续」确认 + `-s4blegclient`（含 C3 反向注入）~~ → **已完成，见附录 A**。
 2. S4C-4：四类占位音 + `-s4baudio`（含 C5 可区分断言）。
 3. S4C-5：真人 runbook / 访谈模板 / P0 交付报告（Q4）。
 4. 用例齐后建 `run_regression_4c.bat`（18 行）并补 C1/C2 独立断言。
+
+---
+
+# 附录 A · 阶段二（S4C-2：双人三关 + 全队确认）
+
+> 日期：2026-10-31　夹具：`Networking/S4CLegClientTest.cs`
+> 跑法：Host `-s4clegclienthost`，等 `S4A_BOOT_OK spawned=1` 后再起 Client `-s4clegclient -address=127.0.0.1`
+> 证据目录：`Logs\s4c_manual4`（两边 `exit=0`）
+
+## A.1 正向：全员确认才换关（三关）
+
+```
+[S4C] S4C_LEGCLIENT_DUAL players=2
+[S4C] S4C_CONTINUE_READY leg=1 netId=19 host=0 ready=1 count=1/2
+[S4C] S4C_CONTINUE_READY leg=1 netId=18 host=1 ready=1 count=2/2
+[S4C] S4C_CONTINUE_ADVANCE leg=1 count=2/2 from=Safehouse to=Night1
+[S4C] S4C_LEGCLIENT_STEP leg=1 advanced=True legIndex=2 balance=1800 advanceLog=True
+[S4C] S4C_CONTINUE_ADVANCE leg=2 count=2/2 from=Safehouse to=Night1
+[S4C] S4C_LEGCLIENT_STEP leg=2 advanced=True legIndex=3 balance=4200 advanceLog=True
+[S4C] S4C_CONTINUE_ADVANCE leg=3 count=2/2 from=Safehouse to=Night1
+[S4C] S4C_LEGCLIENT_STEP leg=3 advanced=True legIndex=4 balance=7000 advanceLog=True
+[S4C] S4C_LEGCLIENT_OK legs=3 dual=1 advances=3 balance=7000 ok=True
+```
+
+客户端侧：
+
+```
+[S4C] S4C_LEGCLIENT_CLIENT_STEP leg=1 advances=1 seconds=3.0 legIndex=1
+[S4C] S4C_LEGCLIENT_CLIENT_STEP leg=2 advances=2 seconds=3.0 legIndex=2
+[S4C] S4C_LEGCLIENT_CLIENT_STEP leg=3 advances=3 seconds=3.0 legIndex=3
+[S4C] S4C_LEGCLIENT_CLIENT_OK legs=3 advances=3 ok=True
+```
+
+## A.2 反向验证 C3：1/2 不换关
+
+- Host 侧：`S4C_CONTINUE_WAIT leg=N reason=not_all_ready count=1/2` 从 `seconds=0.0` 连到 `4.0`，`S4C_LEGCLIENT_LONE ... stayed=True waitLog=True seconds=2.5`，三关均成立。
+- Client 侧：`S4C_LEGCLIENT_CLIENT_LONE leg=N ready=1/2 scene=Safehouse stayed=True seconds=2.0`，三关均成立。
+
+两条证据同时存在才说明「门确实在等第二个人」，而不是「观测窗太短没来得及换关」。
+
+## A.3 本轮定位并修掉的三个真缺陷
+
+1. **客户端账本随场景卸载被销毁**
+   - 证据：`S4C_DIAG side=client ... acctNull=1 ... ready=-1/-1`，客户端读到的是已销毁实例。
+   - 根因：客户端 GameRoot 由 `NetworkClient.SpawnPrefab()` 直接实例化到当前场景，换关随场景卸载；`S4ABootstrap` 只给服务端做了 DDOL。
+   - 修法：`TeamAccount.OnStartClient()` 里 `DontDestroyOnLoad(gameObject)`（host 幂等）。修后 `acctNull=0 acctNetId=2 acctClient=1`。
+
+2. **客户端传送不生效（服务端永远看到出生点）**
+   - 根因：旧 `Teleport` 先禁用 `NetworkTransformReliable` 再改位置。玩家是客户端权威（`syncDirection=ClientToServer`），禁用 NT 等于把「位置变化推给服务端」的通道一起关掉。
+   - 修法：只写 `transform.position`，不碰 NT。
+
+3. **房主自己的按住不 latch（count 停在 1/2）**
+   - 证据：`S4C_DIAG side=host hostPlayer=1 pos=(0.0,1.0,5.5) dist=11.5`，以及坏路径下 `pos=(-6.0,-3752.6,-15.2)`（掉出地面）。
+   - 根因：房主是服务端权威，站位交给坡度/重力，实测从入口锚点滑到 `(0,0)`（离门 6m）甚至掉出地图；`Teleport` 只挪一次，之后又自己滑走。
+   - 修法：按住期间每帧钉回 `SafehouseStand`；并每秒打 `S4C_DIAG`（新增 `held` / `portalReady` / `portalPlayers`，用来区分「门没 latch」与「复制没到」）。
+
+## A.4 纪律边界（不得换算成真人门）
+
+双进程自动化只证明**代码路径**：C3 的 1/2 不换关、全员 2/2 才换关。它**不是** A2（双人真人继续确认）的证据，也不构成 P0 通过。A2 仍需真人按 A2 清单跑。
+

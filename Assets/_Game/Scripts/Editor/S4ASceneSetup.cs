@@ -524,6 +524,9 @@ namespace ScavengeNightmare.EditorTools
             portalBox.isTrigger = true;
             portal.AddComponent<LevelPortal>();
 
+            // S4C-2：安全屋出口的「全队确认 x/n」HUD。夜路撤离门没有确认流程，不挂。
+            portal.AddComponent<ScavengeNightmare.UI.LevelPortalHud>();
+
             GameObject anchor = new("SceneEntryAnchor_Safehouse");
             anchor.transform.position = new Vector3(0f, 0.05f, 5.5f);
             SceneEntryAnchor entry = anchor.AddComponent<SceneEntryAnchor>();
