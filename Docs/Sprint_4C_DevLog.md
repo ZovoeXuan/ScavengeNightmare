@@ -1,8 +1,8 @@
-# Sprint 4C · 开发日志（阶段一：S4C-1 / S4C-3）
+# Sprint 4C · 开发日志（S4C-1 / 2 / 3 / 4 / 5）
 
-> 范围：S4C-1 商店 8/8（工具带/体能商品化）、S4C-3 夜路商店终端清零（T12）
+> 范围：S4C-1 商店 8/8（工具带/体能商品化）、S4C-3 夜路商店终端清零（T12）、S4C-2 全队继续、S4C-4 四类占位音、S4C-5 真人验收包
 > 起始：2026-10-31　计划：[`Sprint_4C_TechnicalPlan.md`](Sprint_4C_TechnicalPlan.md)
-> 状态：**4C 未收口**。S4C-2 已完成（见附录 A）；S4C-4（四类占位音）、S4C-5（真人验收包 + Q4）待做。
+> 状态：**4C 自动化收口**（4C 门 18/18）。A1/A2/A10/A11 真人门仍未开，P0 待用户签字。
 
 ---
 
@@ -15,9 +15,13 @@
 | S4C-3 夜路终端 | **完成**：`S4C_SHOP_TERMINAL_REMOVED scene=Night1 count=1`；`nightShop=0 safehouseShop=1` |
 | S4C-3 商店用例迁移 | **完成**：`-s4ashop` 改为「Night1 → Safehouse → 买 4 件」，`S4A_SHOP_OK` 保持 |
 | S4C-2 全队「继续」 | **完成**（附录 A）：`S4C_LEGCLIENT_OK legs=3 dual=1 advances=3 balance=7000 ok=True`；C3 1/2 不换关两侧都有证据 |
+| S4C-4 四类占位音 | **完成**（附录 B）：`S4C_AUDIO_OK cues=4 distinguishable=4 ok=True`；C5 注入实测 `distinguishable=1 → FAIL` |
+| S4C-5 真人验收包 | **完成**（附录 C）：runbook / 访谈模板 / P0 交付报告三件 + 记录器四类事件 |
+| 4C 门 | **18/18**：`S4C_REGRESSION_OK passes=18 expected=18`（含 `s4baudio`） |
 | 4B 回归 | **15/15**：`S4B_REGRESSION_OK passes=15 expected=15` |
 | 4A 回归 | **13/13**：`S4A_REGRESSION_OK passes=13 expected=13` |
-| 未完成 | S4C-4 / S4C-5；A1/A2/A10/A11 真人门仍未开；Q4 未写 |
+| 并集回归 | **31/31**：`S4_REGRESSION_OK passes=31 expected=31`（`s4a 14 / s4b 15 / s4c 2`，无漂移） |
+| 未完成 | A1/A2/A10/A11 真人门；正式美术/音频（用户后补） |
 
 ---
 
@@ -118,6 +122,11 @@
    - 现象：`S4B_LEG_WRONG_SCENE_SKIP reason=no_terminal_in_night`，负向注入等于没验。
    - 修法：测试临时生成一个 `ShopTerminal_NightProbe`，调真实守卫、打拒绝行、立即销毁。
 
+4. **`s4baudio` 假红：新夹具漏打中性身份前置行**
+   - 现象：`NOTE s4baudio acceptance_marker_present=yes` 仍判 `FAIL reason=neutral_precondition_missing`；手工单跑 exit=0，看不出来。
+   - 根因：`S4CAudioTest.Start()` 只设了 `ForceNoTraits` / `SuppressManual`，没打印 `S4A_NEUTRAL_OK`。
+   - 修法：按 `S4ALoop`/`S4BMonster` 等夹具同款补一行 `[S4A] S4A_NEUTRAL_OK traits=none feel=...`；重建后 `PASS s4baudio`。
+
 ---
 
 ## 5. 回归
@@ -126,18 +135,20 @@
 |---|---|---|
 | 4B | `S4B_REGRESSION_OK passes=15 expected=15` | `RUN_DIR=...\Logs\s4_reg\周六022610-152239`；`CASES_CHECK_OK expected=15 floor=15`；`STALE_CHECK_OK src=202610311521 bin=202610311522` |
 | 4A | `S4A_REGRESSION_OK passes=13 expected=13` | `RUN_DIR=...\Logs\s4a_reg\周六022610-153312`；`-s4ashop` 已迁到安全屋 |
+| 4C | `S4C_REGRESSION_OK passes=18 expected=18` | `RUN_DIR=...\Logs\s4_reg\周六022610-174732`；`STALE_CHECK_OK src=202610311745 bin=202610311746`；`s4baudio` PASS |
+| 并集 | `S4_REGRESSION_OK passes=31 expected=31` | `RUN_DIR=...\Logs\s4_reg\周六022610-175450`；`CASES_CHECK_OK expected=31 floor=31`；`STALE_CHECK_OK src=202610311745 bin=202610311746`；`BREAKDOWN s4a 14 / s4b 15 / s4c 2` |
 
-清单变更：`regression_4b_cases.txt` 14 → **15**（新增 `s4bshop8`）；并集 `regression_cases.txt` 27 → **28**；`expected` 仍由行数推导。
+清单变更：`regression_4b_cases.txt` 14 → **15**（新增 `s4bshop8`）；新增 `regression_4c_cases.txt`（18）；并集 `regression_cases.txt` 28 → **31**（`# expected_min: 31`）；`expected` 仍由行数推导。
 
 ---
 
 ## 6. 与计划的偏差 / 仍欠
 
-1. **4C 门尚未建**：`regression_4c_cases.txt` / `run_regression_4c.bat` 等 S4C-2/4 用例齐了再建（计划是 18 行）；本轮 `s4bshop8` 暂挂 4B 门，marker 用 `S4B_SHOP8_OK`。
-2. **C1/C2 反向注入还不是独立用例**：未购买时 1 槽 / 5.0s 已由 `-s4bshop8` 的前置读数覆盖；「第二槽 `reason=locked` 显式拒绝」只有代码路径，没有自动断言。
-3. **S4C-2 未做**：`-s4blegclient` 与全队「继续」确认仍是空白；A2 未覆盖。
-4. **S4C-4 未做**：四类占位音仍只有 `FrictionEvents` 的一个短音。
-5. **S4C-5 未做**：真人 runbook、访谈模板、P0 交付报告（含 Q4）未写；A1/A2/A10/A11 仍未开。
+1. ~~**4C 门尚未建**~~ → **已建**（18 行，见附录 C）。
+2. ~~**C1/C2 反向注入还不是独立用例**~~ → C2 已由 `-s4bshop8` 前置读数覆盖；C1 的显式 `reason=locked` 仍无独立断言（缺口 G5）。
+3. ~~S4C-2 未做~~ → **已完成，见附录 A**；A2 仍只有代码路径证据。
+4. ~~S4C-4 未做~~ → **已完成，见附录 B**；正式素材仍待用户后补（T1）。
+5. ~~**S4C-5 未做**~~ → **已完成，见附录 C**；A1/A2/A10/A11 真人门仍未开。
 6. 正式美术/音频由用户后补，本轮不接（附录 B 规格已在计划里）。
 
 ---
@@ -147,7 +158,9 @@
 | 类型 | 文件 |
 |---|---|
 | 新增（商品） | `Data/Shop/tool_belt.asset`、`Data/Shop/stamina_training.asset` |
-| 新增（测试） | `Networking/S4BShop8Test.cs` |
+| 新增（测试） | `Networking/S4BShop8Test.cs`、`Networking/S4CLegClientTest.cs`、`Networking/S4CAudioTest.cs` |
+| 新增（音频） | `Audio/AudioCue.cs`、`Audio/AudioBus.cs` |
+| 新增（验收包） | `Docs/Playtest_4C_Runbook.md`、`Docs/Playtest_4C_Interview.md`、`Docs/P0_Delivery_Report.md` |
 | 新增（文档） | `Docs/Sprint_4C_TechnicalPlan.md`、`Docs/Sprint_4C_DevLog.md` |
 | 修改（商店） | `Economy/ShopItem.cs`（枚举追加）、`Economy/EquippedEffects.cs`、`Economy/ShopTerminal.cs`（删场景豁免）、`Resources/ShopCatalog.asset`（8 件） |
 | 修改（能力） | `Gameplay/BeltSlot.cs`（有效槽位 + `reason=locked`）、`Networking/PlayerStamina.cs`（5.0/7.5 档） |
@@ -161,9 +174,9 @@
 ## 8. 下一步
 
 1. ~~S4C-2：全队「继续」确认 + `-s4blegclient`（含 C3 反向注入）~~ → **已完成，见附录 A**。
-2. S4C-4：四类占位音 + `-s4baudio`（含 C5 可区分断言）。
-3. S4C-5：真人 runbook / 访谈模板 / P0 交付报告（Q4）。
-4. 用例齐后建 `run_regression_4c.bat`（18 行）并补 C1/C2 独立断言。
+2. ~~S4C-4：四类占位音 + `-s4baudio`（含 C5 可区分断言）~~ → **已完成，见附录 B**。
+3. ~~S4C-5：真人 runbook / 访谈模板 / P0 交付报告（Q4）~~ → **已完成，见附录 C**。
+4. ~~用例齐后建 `run_regression_4c.bat`（18 行）~~ → **已完成**；C1 独立断言仍未补（缺口 G5）。
 
 ---
 
@@ -223,4 +236,99 @@
 ## A.4 纪律边界（不得换算成真人门）
 
 双进程自动化只证明**代码路径**：C3 的 1/2 不换关、全员 2/2 才换关。它**不是** A2（双人真人继续确认）的证据，也不构成 P0 通过。A2 仍需真人按 A2 清单跑。
+
+---
+
+# 附录 B · 阶段三（S4C-4：R6 四类占位音）
+
+> 日期：2026-10-31　夹具：`Networking/S4CAudioTest.cs`（`-s4baudio`）
+> 新增：`Audio/AudioCue.cs`（四条波形定义）、`Audio/AudioBus.cs`（合成 + 冷却 + 播放日志）
+> 钩子：`Cart/CartController.EmitNoise`、`Gameplay/GrabbableProp.PlayHeavyDrop`（经 `NetworkedProp.RpcHeavyDrop` 广播）、`Gameplay/FragileProp.ApplyBreak`、`Curses/CurseRuntime.TickLaughs` 前兆起点
+> 证据目录：`Logs/s4c_audio5.log`（正向）、`Logs/s4c_audioflat.log`（C5 注入）
+
+## B.1 正向（`-s4baudio`，exit=0）
+
+```
+[S4C] S4C_AUDIO_PLAY cue=heavy_drop pitch=1.00 freq=90 dur=0.22 wave=thump mass=60.0
+[S4C] S4C_AUDIO_PLAY cue=glass_break pitch=1.00 freq=900 dur=0.30 wave=noise speed=6.2
+[S4C] S4C_AUDIO_PLAY cue=curse_omen pitch=1.00 freq=320 dur=0.50 wave=sweep lead=1.5
+[S4C] S4C_AUDIO_PLAY cue=cart_wheel pitch=0.91 freq=180 dur=0.18 wave=sine speed=1.9
+[S4C] S4C_AUDIO_METRICS cues=4 distinguishable=4 heavyMass=60.0 glassSpeed=6.2
+      omenLead=1.50 omenToLaugh=1.50 wheelSpeed=1.9 flat=0
+[S4C] S4C_AUDIO_OK cues=4 distinguishable=4 failures=0 ok=True
+```
+
+- 四类都是**真实触发**，不是直接调 AudioBus：重货（safe 60kg）自由落体、易碎件从 2.5m 砸碎、笑面偶前兆、推车过 1.5m/s。
+- 轮声 pitch=0.91 落在计划要求的 0.8–1.2；前兆 `lead=1.50` 与「前兆→发笑」实测间隔 `1.50` 对齐（`omenToLaugh`）。
+- 负向：1kg 罐头同高度落地**不许**触发 heavy_drop（`light_prop_played_heavy_drop` 未出现）。
+
+## B.2 C5 反向注入（`-s4baudio -s4caudioflat`，exit=1）
+
+```
+[S4C] S4C_AUDIO_METRICS cues=4 distinguishable=1 ... flat=1
+[S4C] S4C_AUDIO_FAIL cues=4 distinguishable=1 failures=1
+```
+
+- 注入把四类 cue 压成同一段波形，四类**都播了**但指纹去重只有 1 → 用例必须红。判据取日志原文的 `freq/dur/wave` 去重，不读 AudioBus 自己的计数器。
+
+## B.3 实现口径 / 取舍
+
+| 项 | 决定 | 理由 |
+|---|---|---|
+| 素材 | 程序合成，不落任何 clip 资源 | 用户后补正式音频（T1）；D31 只换 `AudioCueInfo` 与合成函数，调用点不动 |
+| 播放位置 | 服务端判定后广播（重物/前兆），碎裂走既有 `RpcShatter` 四端各播 | 客户端物件是 kinematic，收不到碰撞；不广播的话双人局客户端整局听不到 |
+| 冷却 | 每类 cue 独立 0.15s | 风险表 R4：40 物 + 4 怪时不许刷爆 |
+| 轮声 | 服务端播放 | 与 `CartController` 的服务端权威边界一致；**客户端听不到轮声**是已知剩余项，正式素材阶段随「客户端音效广播」一起收 |
+
+## B.4 纪律边界
+
+占位音通过 ≠ A11（真人体验）通过。四类 cue 只证明「有可区分的声音」，是否「听得懂、会因此调整行为」仍只能由真人访谈判定。
+
+---
+
+# 附录 C · 阶段四（S4C-5：真人验收包 + 4C 门 + P0 交付报告）
+
+> 日期：2026-10-31
+> 新增：`Docs/Playtest_4C_Runbook.md`、`Docs/Playtest_4C_Interview.md`、`Docs/P0_Delivery_Report.md`
+> 新增：`Tools/regression_4c_cases.txt`（18 行）、`Tools/run_regression_4c.bat`
+> 代码：`Gameplay/PlaytestRecorder.cs` 四类 4C 事件 + 三处落点
+
+## C.1 记录器事件（CSV 只有房主进程写）
+
+| type | 落点 | detail 形状 |
+|---|---|---|
+| `leg_start` | `LevelRouteService.AfterSceneChanged`（夜路分支，`SetQuota` 之后） | `leg=.. scene=.. quota=..` |
+| `leg_end` | `TeamAccount.SetLegProgress` 首次越过额度（`GATE_QUOTA_GATE` 之后） | `leg=.. progress=.. quota=.. carry_over=..` |
+| `continue_vote` | `LevelPortal` 逐人 latch 后 | `leg=.. netId=.. count=N/M` |
+| `run_end` | `TeamAccount.ServerEndRun` 末尾（写后立即 `Flush()`） | `reason=.. leg=.. balance=..` |
+
+- 全部 `if (!started) return;`：非房主进程（客户端）不写盘，避免两份 CSV 交错。
+- `leg_end` 只在 `wasReached=false → newReached=true` 那一拍写一次：额度达标后被反复 `SetLegProgress` 不会刷屏。
+- `continue_vote` 用 `netId` 而不是名字：两名玩家同名时也能分开。
+
+## C.2 真人验收包三件
+
+| 文件 | 用途 | 关键判据 |
+|---|---|---|
+| `Playtest_4C_Runbook.md` | 出包/启动参数/键位/三场安排 | 禁带任何 `-s4a*/s4b*/s4c*` 夹具参数；A1/A2/A11 逐条 |
+| `Playtest_4C_Interview.md` | 5 问访谈（Q1–Q5） | Q1 再来一关 ≥50% / Q2 ≥3 自主意外 / Q3 ≥2 共同笑；代填即 A11 FAIL（C6） |
+| `P0_Delivery_Report.md` | 自动化证据 + 真人段 + Q4 + X1–X9 + 缺口 | 结论只允许「P0 待用户签字」；Q4 写「有意裁剪」 |
+
+## C.3 4C 门（18 行）与覆盖面
+
+```
+CASES_CHECK_OK expected=18 floor=18
+STALE_CHECK_OK src=202610311745 bin=202610311746
+PASS s4baudio
+S4C_REGRESSION_BREAKDOWN s4a pass=1 fail=0 s4b pass=15 fail=0 s4c pass=2 fail=0
+S4C_REGRESSION_OK passes=18 expected=18
+```
+
+- 18 = 4B 继承 15 + 4C 新增 3（`s4clegclienthost`/`s4clegclient` 对 + `s4baudio`）；`s4bshop8` 归 4C-1。
+- 4C 门的意义是**防 4B 漂移**：4C 改了 `BeltSlot`/`PlayerStamina`/`ShopCatalog`/`TeamAccount`/`CartController`/`CurseRuntime`/易碎件，任一 4B 用例变红都算 4C 回归。
+- C1–C6 不占行（runner 只接受 PASS）：C5 走 `-s4baudio -s4caudioflat` 手工注入；C3 内含于 `s4clegclient` 对；C1 仍只有前置读数，显式 `reason=locked` 未独立断言（缺口 G5）。
+
+## C.4 纪律边界
+
+自动化全绿只到「代码路径 + 4B 不漂移」。A1（单人 30–40 分钟）、A2（双人全队确认）、A10（三关时长）、A11（真人体验 + 访谈）**一门未开**，`P0_Delivery_Report.md` 的真人段留空即代表未跑，不得用自动化结果填写。
 

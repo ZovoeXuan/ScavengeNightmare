@@ -268,6 +268,7 @@ namespace ScavengeNightmare.Economy
 
             // 达标开门的判据源（QA 的 Q1/Q2）：超额必须照常入账、不截断，
             // carry_over 就是「交超了没有吃亏」的证据。
+            bool wasReached = quotaReached;
             bool newReached = quotaReached || newProgress >= legQuota;
 
             P0SaveService save = P0SaveService.Instance;
@@ -331,6 +332,12 @@ namespace ScavengeNightmare.Economy
             Debug.Log($"[S4A] S4A_DEPOSIT cargoId={cargoId} value={value} state=Committed reason=- balance={balance} legProgress={legProgress} totalAfter={balance}");
 
             Debug.Log($"[S4A] GATE_QUOTA_GATE leg={legIndex} progress={legProgress} quota={legQuota} carry_over={Mathf.Max(0, legProgress - legQuota)} portal={(quotaReached ? "unlocked" : "locked")}");
+
+            // S4C-5：只在「未达标 → 达标」那一次记 leg_end，避免每笔货都写一行。
+            if (!wasReached && newReached)
+            {
+                PlaytestRecorder.Instance?.NoteLegEnd(legIndex, legProgress, legQuota);
+            }
 
             if (prop != null)
             {
@@ -525,6 +532,7 @@ namespace ScavengeNightmare.Economy
             LastPurchaseId = string.Empty;
 
             Debug.Log($"[S4B] GATE_WIPE_STATE reason={reason} legBefore={legBefore} legAfter=1 balanceBefore={balanceBefore} balanceAfter={balance} runId={runId}");
+            PlaytestRecorder.Instance?.NoteRunEnd(reason, legBefore, balanceBefore);
             return true;
         }
 

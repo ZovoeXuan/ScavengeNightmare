@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Mirror;
+using ScavengeNightmare.Gameplay;
 using ScavengeNightmare.Networking;
 using UnityEngine;
 
@@ -185,6 +186,7 @@ namespace ScavengeNightmare.Economy
                         int count = CountLatched();
                         Debug.Log($"[S4C] S4C_CONTINUE_READY leg={account.LegIndex} netId={motor.netId} " +
                                   $"host={(motor.isLocalPlayer ? 1 : 0)} ready=1 count={count}/{PlayerCount}");
+                        PlaytestRecorder.Instance?.NoteContinueVote(account.LegIndex, motor.netId, count, PlayerCount);
 
                         if (firstReadyAt <= 0f)
                         {

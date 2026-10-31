@@ -117,6 +117,7 @@ namespace ScavengeNightmare.Economy
             else
             {
                 account.SetQuota(QuotaFor(account.LegIndex));
+                PlaytestRecorder.Instance?.NoteLegStart(account.LegIndex, sceneName, account.LegQuota);
             }
 
             Debug.Log($"[S4A] S4A_ROUTE_READY scene={sceneName} leg={account.LegIndex} quota={account.LegQuota} balance={account.Balance}");

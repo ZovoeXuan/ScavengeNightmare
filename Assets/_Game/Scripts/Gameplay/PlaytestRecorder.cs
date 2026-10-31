@@ -226,6 +226,56 @@ namespace ScavengeNightmare.Gameplay
             Add("throw", label, $"mass={mass:F1}kg speed={speed:F1}m/s", Vector3.zero);
         }
 
+        // ---------- 4C 事件 ----------
+
+        /// <summary>
+        /// S4C-5：进入新的一关。A10 的单关时长 = 相邻 leg_end.elapsed_s - leg_start.elapsed_s，
+        /// 只靠心跳反推不出来（安全屋那段也被算进去）。
+        /// </summary>
+        public void NoteLegStart(int leg, string scene, int quota)
+        {
+            if (!started)
+            {
+                return;
+            }
+
+            Add("leg_start", "-", $"leg={leg} scene={scene} quota={quota}", Vector3.zero);
+        }
+
+        /// <summary>S4C-5：本关达标（门解锁）。carry_over 记超额，交超了不该吃亏。</summary>
+        public void NoteLegEnd(int leg, int progress, int quota)
+        {
+            if (!started)
+            {
+                return;
+            }
+
+            Add("leg_end", "-", $"leg={leg} progress={progress} quota={quota} carry_over={Mathf.Max(0, progress - quota)}", Vector3.zero);
+        }
+
+        /// <summary>S4C-5：某人按满安全屋出口。A2 的「1/2 不换关」靠这串 count 值判。</summary>
+        public void NoteContinueVote(int leg, uint netId, int count, int total)
+        {
+            if (!started)
+            {
+                return;
+            }
+
+            Add("continue_vote", "-", $"leg={leg} netId={netId} count={count}/{total}", Vector3.zero);
+        }
+
+        /// <summary>S4C-5：一局结束（团灭等）。与 session_end 不同，这条不带时长，只记结局。</summary>
+        public void NoteRunEnd(string reason, int leg, long balance)
+        {
+            if (!started)
+            {
+                return;
+            }
+
+            Add("run_end", "-", $"reason={reason} leg={leg} balance={balance}", Vector3.zero);
+            Flush();
+        }
+
         /// <summary>把 netId 映射为稳定代号 P1..P4，方便复盘时口头对应「P2 就是老三」。</summary>
         public string LabelOf(NetworkIdentity id)
         {
