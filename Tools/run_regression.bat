@@ -152,7 +152,12 @@ set "ABORTREASON="
 set "PROBE=%BASE%\_probe.txt"
 set "OTHER="
 
-powershell -NoProfile -Command "(Get-CimInstance Win32_Process) | Where-Object { $_.Name -eq 'ScavengeNightmare.exe' -or ($_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*run_regression*') } | ForEach-Object { 'pid=' + $_.ProcessId + ' start=' + $_.CreationDate + ' cmd=' + $_.CommandLine }" >"%PROBE%" 2>nul
+rem SELF-EXCLUSION: this very script runs as "cmd.exe /c ...run_regression.bat",
+rem so a naive query matches itself and the guard refuses to ever start. That is
+rem exactly what happened on the first locked-window attempt: reason=already_running
+rem kind=process pointed at the runner's own pid. $PID is the PowerShell helper's
+rem pid, so its ParentProcessId is OUR cmd.exe - exclude that one.
+powershell -NoProfile -Command "$self = (Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)).ParentProcessId; (Get-CimInstance Win32_Process) | Where-Object { ($_.Name -eq 'ScavengeNightmare.exe' -or ($_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*run_regression*')) -and $_.ProcessId -ne $self } | ForEach-Object { 'pid=' + $_.ProcessId + ' start=' + $_.CreationDate + ' cmd=' + $_.CommandLine }" >"%PROBE%" 2>nul
 if exist "%PROBE%" (
   for /f "usebackq delims=" %%L in ("%PROBE%") do if not defined OTHER set "OTHER=%%L"
   del "%PROBE%" >nul 2>&1
