@@ -270,25 +270,68 @@ namespace ScavengeNightmare.EditorTools
 
         private static void RebuildAnchors(Scene scene)
         {
-            List<Vector3> positions = new();
+            // 采集「名字 + 坐标 + profileId」三元组后再重建。
+            //
+            // 原实现只收集坐标（FindObjectsByType 顺序未定义），再按 AnchorProfiles[i] 顺序配对，
+            // 结果是坐标集合保住了、但 profile 与坐标的配对被打乱：跑一次 Setup，
+            // 某个位置可能从 safe 换成更大的道具，走廊悄悄变窄而坐标看起来没变。
+            // 实测影响：-s4bmon 的测速走廊被重新堵住，且看起来像 flaky。
+            List<(string name, Vector3 pos, string profileId)> existing = new();
             foreach (PropSpawnAnchor anchor in UnityEngine.Object.FindObjectsByType<PropSpawnAnchor>(FindObjectsSortMode.None))
             {
-                positions.Add(anchor.transform.position);
+                existing.Add((anchor.gameObject.name, anchor.transform.position, anchor.profileId));
                 UnityEngine.Object.DestroyImmediate(anchor.gameObject);
             }
 
+            // 排序只为让「重建顺序」与枚举顺序无关（同名/同 profile 时按坐标兜底），
+            // 配对关系本身来自采集到的三元组，不依赖顺序。
+            existing.Sort((a, b) =>
+            {
+                int byName = string.CompareOrdinal(a.name, b.name);
+                if (byName != 0)
+                {
+                    return byName;
+                }
+
+                int byProfile = string.CompareOrdinal(a.profileId, b.profileId);
+                if (byProfile != 0)
+                {
+                    return byProfile;
+                }
+
+                int byX = a.pos.x.CompareTo(b.pos.x);
+                return byX != 0 ? byX : a.pos.z.CompareTo(b.pos.z);
+            });
+
+            foreach ((string name, Vector3 pos, string profileId) in existing)
+            {
+                GameObject go = new(name);
+                go.transform.position = pos;
+                PropSpawnAnchor anchor = go.AddComponent<PropSpawnAnchor>();
+                anchor.profileId = profileId;
+                EditorUtility.SetDirty(anchor);
+                EditorUtility.SetDirty(go);
+            }
+
+            // 现场锚点少于配置表时，用尚未出现的 profile 补齐；已有配对一律不动。
+            HashSet<string> used = new(existing.ConvertAll(e => e.profileId));
+            int index = existing.Count;
+
             for (int i = 0; i < AnchorProfiles.Length; i++)
             {
-                Vector3 pos = i < positions.Count
-                    ? positions[i]
-                    : new Vector3(-16f + (i % 4) * 8f, 0.6f, -16f + (i / 4) * 8f);
+                if (!used.Add(AnchorProfiles[i]))
+                {
+                    continue;
+                }
 
-                GameObject go = new($"Anchor_4A_{i + 1}_{AnchorProfiles[i]}");
+                Vector3 pos = new(-16f + (index % 4) * 8f, 0.6f, -16f + (index / 4) * 8f);
+                GameObject go = new($"Anchor_4A_{index + 1}_{AnchorProfiles[i]}");
                 go.transform.position = pos;
                 PropSpawnAnchor anchor = go.AddComponent<PropSpawnAnchor>();
                 anchor.profileId = AnchorProfiles[i];
                 EditorUtility.SetDirty(anchor);
                 EditorUtility.SetDirty(go);
+                index++;
             }
         }
 
