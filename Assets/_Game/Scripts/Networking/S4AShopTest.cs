@@ -3,6 +3,7 @@ using Mirror;
 using ScavengeNightmare.Economy;
 using ScavengeNightmare.Save;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace ScavengeNightmare.Networking
 {
@@ -82,12 +83,39 @@ namespace ScavengeNightmare.Networking
         {
             yield return WaitFor(() => NetworkClient.localPlayer != null, 20f, "no_local_player");
             yield return WaitFor(() => TeamAccount.Instance != null, 20f, "no_team_account");
-            yield return WaitFor(() => ShopTerminal.Instance != null, 20f, "no_shop_terminal");
-            yield return WaitFor(() => ShopCatalog.Instance != null && ShopCatalog.Instance.Count >= 4, 20f, "no_catalog");
+            yield return WaitFor(() => ShopCatalog.Instance != null && ShopCatalog.Instance.Count >= 8, 20f, "no_catalog");
 
-            motor = NetworkClient.localPlayer.GetComponent<PlayerMotor>();
             account = TeamAccount.Instance;
+
+            // S4C-3：商店只在安全屋开张，Night1 已不再生成终端。
+            // 本用例必须真的进一次安全屋，否则「夜路拒买」与「安全屋可买」两条路径分不开。
+            NetworkManager manager = NetworkManager.singleton;
+            if (manager == null)
+            {
+                Fail("no_network_manager_at_run");
+                Application.Quit(1);
+                yield break;
+            }
+
+            Debug.Log("[S4C] S4C_SHOP_SCENE from=Night1 to=Safehouse");
+            manager.ServerChangeScene("Safehouse");
+            yield return WaitFor(() => SceneManager.GetActiveScene().name == "Safehouse", 25f, "safehouse_not_loaded");
+            yield return WaitFor(() => NetworkClient.localPlayer != null, 25f, "no_local_player_after_safehouse");
+            yield return WaitFor(() => ShopTerminal.Instance != null, 25f, "no_shop_terminal");
+            yield return WaitFor(() => account.PurchaseWindowOpen, 25f, "purchase_window_closed");
+
+            // 换关会重建玩家，必须在换关之后再抓 motor。
+            motor = NetworkClient.localPlayer != null ? NetworkClient.localPlayer.GetComponent<PlayerMotor>() : null;
             terminal = ShopTerminal.Instance;
+
+            if (motor == null)
+            {
+                Fail("no_motor_after_safehouse");
+                Application.Quit(1);
+                yield break;
+            }
+
+            Debug.Log($"[S4C] S4C_SHOP_SCENE_OK scene={SceneManager.GetActiveScene().name} terminal=1 window=1");
 
             // 站进店内（服务端会复核距离，不在店内买的单会被拒）
             Teleport(motor.transform, terminal.transform.position + new Vector3(0f, 1.05f, 1.6f));

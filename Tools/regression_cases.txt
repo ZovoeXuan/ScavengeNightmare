@@ -16,7 +16,7 @@
 # (S4B-5 raised it 23 -> 27); deliberately REMOVING cases must lower it in
 # the same commit.
 #
-# expected_min: 27
+# expected_min: 28
 #
 # Ordering rule: s4bdownhost must be immediately followed by s4bdownclient.
 # That pair is ONE acceptance case that needs TWO processes running at once
@@ -72,3 +72,7 @@ s4bleg|-s4bleg|S4B_LEG_OK|S4B-5 three legs: quota 1800/2400/2800, props 12/14/16
 s4bbelt|-s4bbelt|S4B_BELT_OK|S4B-5 belt holds <=7kg while hands hold 42kg, drops on downed; sprint >=35pct
 s4bperf|-s4bperf|S4B_PERF_OK|S4B-5 1 cart + 40 props + 4 monsters, fps>=60, client kbps<=600
 s4acart-a4-p0|-s4acart-a4 -p0props -leg=3|S4A_A4_OK|S4B-5 A4 rerun on p0leg L3 (all 16 props, 102kg, 30m)
+
+# --- Sprint 4C-1 (1) ---
+
+s4bshop8|-s4bshop8|S4B_SHOP8_OK|S4C-1 shop 8/8 durable=6; belt 1->2 slots, stamina 5.0->7.5s

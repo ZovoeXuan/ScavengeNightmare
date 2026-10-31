@@ -2,13 +2,13 @@
 
 1-4 人合作物理拾荒微恐喜剧，Steam PC 买断制。一局 10-20 分钟：进图 → 拾荒 → 被追 → 撤离 → 结算。
 
-> 当前状态：**Sprint 4B · Story 5 完成（4B 收口）**（2026-10-31）：三关梯度（12/14/16 锚点、配额 1800/2400/2800 读表、怪物 1/3/4、诅咒 0/1/2）+ 工具带（≤7kg 第二槽）+ 体能（连续冲刺 ≥35%）+ A4 在 P0 第 3 关复跑 + ShopTerminal 夜路拒买。`S4B_REGRESSION_OK passes=14 expected=14`、`S4A_REGRESSION_OK passes=13 expected=13`。
+> 当前状态：**Sprint 4C · 进行中**（2026-10-31）：S4C-1 商店 8/8（工具带 700 / 体能训练 1200 商品化）、S4C-3 夜路商店终端清零已完成；S4C-2 双人 3 关与全队确认、S4C-4 四类占位音、S4C-5 真人验收包待做。4B 门 `S4B_REGRESSION_OK passes=15 expected=15`、4A 门 `S4A_REGRESSION_OK passes=13 expected=13`。
 >
 > 里程碑：D1–D13 ✓ / Sprint 4A（13/13）✓ / Sprint 4B-1 生存链 ✓ / Sprint 4B-2 噪音+空眼 ✓ / Sprint 4B-3 导购+尖啸罐 ✓ / Sprint 4B-4 两件诅咒 ✓ / Sprint 4B-5 三关梯度+回归收口 ✓
 >
-> **对外措辞**：一局压力成立，真人门未开（A11 与 A1/A2 真人 3 关留 4C；商店仍 6/8，工具带/体能是系统默认能力，不是商品）。
+> **对外措辞**：一局压力成立，真人门未开（A11 与 A1/A2 真人 3 关留 4C 真人场；商店已 8/8，工具带/体能已是商品）。
 >
-> **下一步**：Sprint 4C —— 真人 3 关与时长验收（A1/A2/A10/A11）+ 商店补齐 8 件（工具带/体能做成商品与 `-s4bshop8`）。详见 `Docs/Sprint_4B_TechnicalPlan.md` §6.1 与 `Docs/Sprint_4B_DevLog.md` §13。
+> **下一步**：Sprint 4C（P0 收口门）—— 商店 8/8 商品化、双人 3 关与全队继续确认、夜路商店终端清零、R6 四类占位音、真人验收包与 Q4 交付报告。详见 [`Docs/Sprint_4C_TechnicalPlan.md`](Docs/Sprint_4C_TechnicalPlan.md)。
 
 ## 引擎与版本
 

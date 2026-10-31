@@ -49,5 +49,11 @@ namespace ScavengeNightmare.Economy
         public static bool HasFlashlight => MagnitudeOf(ShopEffect.Flashlight, 0f) > 0f;
 
         public static float FlashlightRange => MagnitudeOf(ShopEffect.Flashlight, 0f);
+
+        /// <summary>S4C-1：工具带把腰带槽 1→2。</summary>
+        public static bool HasToolBelt => MagnitudeOf(ShopEffect.ToolBelt, 0f) > 0f;
+
+        /// <summary>S4C-1：体能训练把连续冲刺 5.0s→7.5s。</summary>
+        public static bool HasStaminaTraining => MagnitudeOf(ShopEffect.StaminaTraining, 0f) > 0f;
     }
 }

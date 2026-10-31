@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Mirror;
 using ScavengeNightmare.Combat;
+using ScavengeNightmare.Economy;
 using ScavengeNightmare.Save;
 using ScavengeNightmare.Networking;
 using UnityEngine;
@@ -23,8 +24,14 @@ namespace ScavengeNightmare.Gameplay
         /// <summary>单件上限（kg）。</summary>
         public const float MaxSlotMass = 7f;
 
-        /// <summary>槽位数。</summary>
+        /// <summary>槽位数上限（含工具带解锁后的第二槽）。</summary>
         public const int MaxSlots = 2;
+
+        /// <summary>
+        /// 当前可用槽位：默认 1，买过 `tool_belt` 才是 2。
+        /// S4C-1 把「工具带」从默认能力改成商品后，未购买玩家不应再白拿第二槽。
+        /// </summary>
+        public int EffectiveMaxSlots => EquippedEffects.HasToolBelt ? MaxSlots : 1;
 
         [Header("引用（留空自动抓）")]
         [SerializeField] private PlayerMotor motor;
@@ -107,9 +114,10 @@ namespace ScavengeNightmare.Gameplay
         [Server]
         public bool ServerBeltNearest()
         {
-            if (SlotCount >= MaxSlots)
+            if (SlotCount >= EffectiveMaxSlots)
             {
-                Debug.Log($"[S4B] S4B_BELT_REJECT netId={netId} reason=slot_full slots={MaxSlots}");
+                string reason = (!EquippedEffects.HasToolBelt && SlotCount >= 1) ? "locked" : "slot_full";
+                Debug.Log($"[S4C] GATE_BELT_REJECT netId={netId} reason={reason} slots={EffectiveMaxSlots}");
                 return false;
             }
 
@@ -154,9 +162,10 @@ namespace ScavengeNightmare.Gameplay
                 return false;
             }
 
-            if (SlotCount >= MaxSlots)
+            if (SlotCount >= EffectiveMaxSlots)
             {
-                Debug.Log($"[S4B] S4B_BELT_REJECT netId={netId} reason=slot_full slots={MaxSlots}");
+                string reason = (!EquippedEffects.HasToolBelt && SlotCount >= 1) ? "locked" : "slot_full";
+                Debug.Log($"[S4C] GATE_BELT_REJECT netId={netId} reason={reason} slots={EffectiveMaxSlots}");
                 return false;
             }
 

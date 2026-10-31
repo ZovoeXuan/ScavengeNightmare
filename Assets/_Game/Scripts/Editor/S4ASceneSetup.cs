@@ -105,7 +105,7 @@ namespace ScavengeNightmare.EditorTools
             Check(terminals == 1, $"quota_terminal_{terminals}");
 
             int shops = UnityEngine.Object.FindObjectsByType<ShopTerminal>(FindObjectsSortMode.None).Length;
-            Check(shops == 1, $"shop_terminal_{shops}");
+            Check(shops == 0, $"shop_terminal_night_{shops}");
 
             ShopCatalog catalog = AssetDatabase.LoadAssetAtPath<ShopCatalog>(ShopCatalogPath);
             Check(catalog != null && catalog.Count >= 4, $"shop_catalog_{(catalog != null ? catalog.Count : 0)}");
@@ -176,7 +176,7 @@ namespace ScavengeNightmare.EditorTools
 
             if (failures == 0)
             {
-                Debug.Log($"[S4A] S4A_VALIDATE_OK night1=1 quotaTerminal=1 anchors=16 evacRemoved=1 traits=none gameroot=1 saveService=1 saveTest=1");
+                Debug.Log($"[S4A] S4A_VALIDATE_OK night1=1 quotaTerminal=1 anchors=16 evacRemoved=1 traits=none gameroot=1 saveService=1 saveTest=1 nightShop=0 shopItems={(catalog != null ? catalog.Count : 0)}");
             }
         }
 
@@ -375,7 +375,9 @@ namespace ScavengeNightmare.EditorTools
                 EnsureShopItem("flashlight", "手电筒", "F 键开关，射程 18m", 350, ShopEffect.Flashlight, 18f, 3),
                 EnsureShopItem("grip_training", "握力训练", "负重性能 +15%：负重减速量与负重硬上限同时提高", 900, ShopEffect.CarryPenalty, 1.15f, 4),
                 EnsureShopItem("self_injector", "自救针", "倒地 8s 后可自救一次；每关最多买 1 支", 120, ShopEffect.SelfInjector, 1f, 5, true),
-                EnsureShopItem("medkit", "急救包", "对队友回复 60 HP（3s）；对自己无效", 200, ShopEffect.Medkit, 60f, 6, true, 2)
+                EnsureShopItem("medkit", "急救包", "对队友回复 60 HP（3s）；对自己无效", 200, ShopEffect.Medkit, 60f, 6, true, 2),
+                EnsureShopItem("tool_belt", "工具带", "腰带多挂一件 ≤7kg 小件（1 槽 → 2 槽）", 700, ShopEffect.ToolBelt, 1f, 7),
+                EnsureShopItem("stamina_training", "体能训练", "连续冲刺 5.0s → 7.5s", 1200, ShopEffect.StaminaTraining, 1.5f, 8)
             };
 
             ShopCatalog catalog = AssetDatabase.LoadAssetAtPath<ShopCatalog>(ShopCatalogPath);
@@ -390,42 +392,20 @@ namespace ScavengeNightmare.EditorTools
             EditorUtility.SetDirty(catalog);
             AssetDatabase.SaveAssets();
 
+            // S4C-3（T12）：夜路不再生成商店终端。商店只在安全屋开张——
+            // 之前把终端留在 Night1 只靠 wrong_scene 拒绝，玩家会看到一个点不动的柜台，
+            // 而且 `-s4a*` 的场景豁免会一直掩盖「夜路能不能刷商品」这个问题。
             ShopTerminal[] existing = UnityEngine.Object.FindObjectsByType<ShopTerminal>(FindObjectsSortMode.None);
+
+            foreach (ShopTerminal t in existing)
+            {
+                UnityEngine.Object.DestroyImmediate(t.gameObject, true);
+            }
 
             if (existing.Length > 0)
             {
-                // 终端现在只是普通 MonoBehaviour（Command 挂在玩家身上，场景对象没有 owner），
-                // 早先挂上的 NetworkIdentity 要摘掉，否则 Mirror 会为一个没有任何行为、
-                // 却带 Identity 的场景对象分配 sceneId。
-                foreach (ShopTerminal t in existing)
-                {
-                    NetworkIdentity id = t.GetComponent<NetworkIdentity>();
-                    if (id != null)
-                    {
-                        UnityEngine.Object.DestroyImmediate(id, true);
-                    }
-
-                    if (t.GetComponent<ScavengeNightmare.UI.ShopHUD>() == null)
-                    {
-                        t.gameObject.AddComponent<ScavengeNightmare.UI.ShopHUD>();
-                    }
-
-                    EditorUtility.SetDirty(t.gameObject);
-                }
-
-                return;
+                Debug.Log($"[S4C] S4C_SHOP_TERMINAL_REMOVED scene=Night1 count={existing.Length}");
             }
-
-            GameObject go = new("ShopTerminal");
-            go.transform.position = new Vector3(5f, 0.6f, -16.5f);
-
-            BoxCollider box = go.AddComponent<BoxCollider>();
-            box.size = new Vector3(3f, 2.4f, 3f);
-            box.isTrigger = true;
-
-            go.AddComponent<ShopTerminal>();
-            go.AddComponent<ScavengeNightmare.UI.ShopHUD>();
-            EditorUtility.SetDirty(go);
         }
 
         private static ShopItem EnsureShopItem(string id, string display, string desc, int price, ShopEffect effect, float magnitude, int hotkey, bool consumable = false, int maxOwned = 1)

@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 80befc49e7d46f14ea7df41547d10ba6, type: 3}
+  m_Name: tool_belt
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Economy.ShopItem
+  id: tool_belt
+  displayName: "\u5DE5\u5177\u5E26"
+  description: "\u8170\u5E26\u591A\u6302\u4E00\u4EF6 \u22647kg \u5C0F\u4EF6\uFF081
+    \u69FD \u2192 2 \u69FD\uFF09"
+  price: 700
+  maxOwned: 1
+  consumable: 0
+  effect: 7
+  magnitude: 1
+  hotkey: 7

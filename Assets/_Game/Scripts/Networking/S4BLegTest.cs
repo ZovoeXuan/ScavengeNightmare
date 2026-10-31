@@ -286,10 +286,18 @@ namespace ScavengeNightmare.Networking
         private IEnumerator RunWrongSceneBuy()
         {
             ShopTerminal terminal = FindFirst<ShopTerminal>();
+            GameObject probe = null;
+
             if (terminal == null)
             {
-                Debug.Log("[S4B] S4B_LEG_WRONG_SCENE_SKIP reason=no_terminal_in_night");
-                yield break;
+                // S4C-3 起夜路场景里已经没有商店终端（T12 收口）。
+                // 「夜路拒买」这条负向注入不能就此消失——临时放一个测试探针，
+                // 仍然走真实的 ServerHandleBuy 守卫，验完立即销毁。
+                Debug.Log("[S4B] S4B_LEG_WRONG_SCENE_PROBE reason=no_terminal_in_night");
+                probe = new GameObject("ShopTerminal_NightProbe");
+                probe.transform.position = new Vector3(0f, 0.6f, -6f);
+                terminal = probe.AddComponent<ShopTerminal>();
+                yield return new WaitForSeconds(0.15f);
             }
 
             NetworkIdentity local = NetworkClient.localPlayer;
@@ -317,6 +325,12 @@ namespace ScavengeNightmare.Networking
             // 换回入口附近，别把玩家留在商店终端旁边影响后续换关。
             Teleport(local.transform, new Vector3(0f, 1f, 18f));
             yield return new WaitForSeconds(0.2f);
+
+            if (probe != null)
+            {
+                Object.Destroy(probe);
+                yield return null;
+            }
         }
 
         // ---------------- 重复入账 ----------------

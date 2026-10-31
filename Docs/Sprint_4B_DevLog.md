@@ -591,7 +591,7 @@ S4A_REGRESSION_OK passes=13 expected=13
 
 ### 13.9 与计划的偏差 / 技术债（不许对外说成已完成）
 
-1. **商店 6/8，不是 8/8**：`tool_belt`（700）与 `stamina_training`（1200）**没有做成商品**；
+1. **商店 6/8，不是 8/8**（**已被 Sprint 4C-1 关闭**：`tool_belt` 700 / `stamina_training` 1200 已成商品，`-s4bshop8` 见 4C DevLog）：
    工具带（`BeltSlot`）与体能（`PlayerStamina`）是**所有人默认可用**的系统能力。`-s4bshop8` 未交付。
    影响：`P0_VerticalSlice.md` §2.5「8 件」门票未闭；购买→生效→可断言这条链对这两件不存在。
 2. **回归拆成两道门，不是单条 21 条**：`regression_4b_cases.txt` 14 行（13 行 4B + 1 行 A4 P0 复跑），

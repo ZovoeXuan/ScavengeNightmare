@@ -1,4 +1,3 @@
-using ScavengeNightmare.Save;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -70,12 +69,11 @@ namespace ScavengeNightmare.Economy
                 return;
             }
 
-            // 4B §S4B-5：商店只在安全屋开张。Night1 场景里仍残留一个终端（技术债 T12），
-            // 不拦的话「夜路里按数字键就能刷商品」会一直存在。
-            // -s4a* 用例（s4ashop 等）历史上就在 Night1 买，必须保留旧口径，
-            // 否则 4A 13 条会凭空变红；这正是 §6.2 里唯一允许的兼容例外。
+            // S4C-3（T12 收口）：商店只在安全屋开张，夜路里不再有任何终端。
+            // 旧版本把终端留在 Night1、只靠本闸门拒绝，并给 `-s4a*` 留了场景豁免——
+            // 豁免一开，B8 的「夜路拒买」就永远验不到真实路径。豁免随终端一起删除。
             string sceneName = SceneManager.GetActiveScene().name;
-            if (sceneName != "Safehouse" && !S4ACli.Is4ARun)
+            if (sceneName != "Safehouse")
             {
                 Debug.Log($"[S4A] GATE_BUY_REJECT itemId=hotkey{hotkey} reason=wrong_scene balance={account.Balance} " +
                           $"visit={account.VisitPurchases} dist={DistanceTo(player.position):F2} scene={sceneName}");

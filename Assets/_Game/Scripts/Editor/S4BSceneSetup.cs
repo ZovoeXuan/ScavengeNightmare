@@ -32,6 +32,7 @@ namespace ScavengeNightmare.EditorTools
     public static class S4BSceneSetup
     {
         private const string NightScene = "Assets/_Game/Scenes/Night1.unity";
+        private const string SafehouseScene = "Assets/_Game/Scenes/Safehouse.unity";
         private const string PlayerPrefab = "Assets/_Game/Prefabs/Player.prefab";
         private const string GameRootPrefab = "Assets/_Game/Prefabs/S4AGameRoot.prefab";
         private const string MonsterPrefab = "Assets/_Game/Prefabs/Monster_HollowEye.prefab";
@@ -91,7 +92,7 @@ namespace ScavengeNightmare.EditorTools
         [MenuItem("拾荒惊魂/S4B · 生成/校验 生存系统")]
         public static void Setup()
         {
-            // 先保证 4A 基线（Night1 / Safehouse / 商店 6 件）是最新的。
+            // 先保证 4A 基线（Night1 / Safehouse / 商店 8 件）是最新的。
             S4ASceneSetup.Setup();
 
             EnsurePlayerComponents();
@@ -129,9 +130,11 @@ namespace ScavengeNightmare.EditorTools
             Check(player != null && player.GetComponent<PlayerStamina>() != null, "player_stamina");
 
             ShopCatalog catalog = AssetDatabase.LoadAssetAtPath<ShopCatalog>(ShopCatalogPath);
-            Check(catalog != null && catalog.Count >= 6, $"shop_catalog_{(catalog != null ? catalog.Count : 0)}");
+            Check(catalog != null && catalog.Count >= 8, $"shop_catalog_{(catalog != null ? catalog.Count : 0)}");
             Check(catalog != null && catalog.Find("self_injector") != null, "shop_self_injector");
             Check(catalog != null && catalog.Find("medkit") != null, "shop_medkit");
+            Check(catalog != null && catalog.Find("tool_belt") != null, "shop_tool_belt");
+            Check(catalog != null && catalog.Find("stamina_training") != null, "shop_stamina_training");
 
             GameObject gameRoot = AssetDatabase.LoadAssetAtPath<GameObject>(GameRootPrefab);
             Check(gameRoot != null && gameRoot.GetComponent<NoiseNetworkState>() != null, "gameroot_noise_state");
@@ -157,6 +160,9 @@ namespace ScavengeNightmare.EditorTools
 
             EditorSceneManager.OpenScene(NightScene, OpenSceneMode.Single);
 
+            int nightShops = Object.FindObjectsByType<ShopTerminal>(FindObjectsSortMode.None).Length;
+            Check(nightShops == 0, $"night_shop_{nightShops}");
+
             NetworkManager nm = FindFirst<NetworkManager>();
             Check(nm != null, "network_manager");
             Check(nm != null && nm.GetComponent<TeamWipeDetector>() != null, "team_wipe_detector");
@@ -174,6 +180,7 @@ namespace ScavengeNightmare.EditorTools
             Check(nm != null && nm.GetComponent<S4BLegTest>() != null, "leg_test");
             Check(nm != null && nm.GetComponent<S4BBeltTest>() != null, "belt_test");
             Check(nm != null && nm.GetComponent<S4BPerfTest>() != null, "perf_test");
+            Check(nm != null && nm.GetComponent<S4BShop8Test>() != null, "shop8_test");
 
             CurseRuntime curseRuntime = nm != null ? nm.GetComponent<CurseRuntime>() : null;
             if (curseRuntime != null)
@@ -258,12 +265,20 @@ namespace ScavengeNightmare.EditorTools
                 Check(totalValue == LegTotalValues[leg - 1], $"leg_{leg}_value_{totalValue}");
             }
 
+            // 商店终端只在安全屋。切过去数一次，再重新加载目录——
+            // OpenScene 会卸载先前 LoadAssetAtPath 拿到的实例，继续复用旧引用会读到 0。
+            EditorSceneManager.OpenScene(SafehouseScene, OpenSceneMode.Single);
+            int safehouseShops = Object.FindObjectsByType<ShopTerminal>(FindObjectsSortMode.None).Length;
+            Check(safehouseShops == 1, $"safehouse_shop_{safehouseShops}");
+            ShopCatalog catalogNow = AssetDatabase.LoadAssetAtPath<ShopCatalog>(ShopCatalogPath);
+
             if (failures == 0)
             {
-                Debug.Log($"[S4B] S4B_VALIDATE_OK vitals=1 revive=1 wipe=1 downedHud=1 shop6=1 tests=11 " +
+                Debug.Log($"[S4B] S4B_VALIDATE_OK vitals=1 revive=1 wipe=1 downedHud=1 shop8=1 tests=12 " +
                           $"monsters={monsterAnchors} monsterKinds=3 noiseHud=1 monsterPrefab=1 noiseState=1 " +
                           $"curseAnchors={curseAnchors} curseKinds=2 curseHud=1 " +
-                          $"legs=3 legAnchors=12/14/16 legValues=3155/4365/4785 belt=1 stamina=1");
+                          $"legs=3 legAnchors=12/14/16 legValues=3155/4365/4785 belt=1 stamina=1 " +
+                          $"nightShop=0 safehouseShop={safehouseShops} shopItems={(catalogNow != null ? catalogNow.Count : 0)}");
             }
         }
 
@@ -397,6 +412,7 @@ namespace ScavengeNightmare.EditorTools
             changed |= AddIfMissing<S4BLegTest>(nm.gameObject);
             changed |= AddIfMissing<S4BBeltTest>(nm.gameObject);
             changed |= AddIfMissing<S4BPerfTest>(nm.gameObject);
+            changed |= AddIfMissing<S4BShop8Test>(nm.gameObject);
 
             GameObject dollPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DollPrefabPath);
             GameObject tabletPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(TabletPrefabPath);

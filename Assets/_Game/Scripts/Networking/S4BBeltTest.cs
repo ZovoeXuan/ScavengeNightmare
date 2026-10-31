@@ -122,6 +122,41 @@ namespace ScavengeNightmare.Networking
 
             grab.SetInputEnabled(false);
 
+            // S4C-1：工具带与体能训练已从「默认能力」改成商品（700 / 1200）。
+            // 本用例要验的是 4B 的 37.5% 与第二槽，所以必须先真实购买，再看数值；
+            // 购买前基线（1 槽 / 5.0s）由 -s4bshop8 与反向注入覆盖。
+            TeamAccount account = TeamAccount.Instance;
+            if (account == null)
+            {
+                Fail("no_team_account");
+                Application.Quit(1);
+                yield break;
+            }
+
+            account.DepositId("belt-test-seed", 2500);
+            yield return new WaitForSeconds(0.3f);
+
+            Debug.Log($"[S4C] GATE_BELT_SLOTS before={belt.EffectiveMaxSlots} after=? owned=0");
+            Debug.Log($"[S4C] GATE_STAMINA_CAP before={stamina.CapacitySeconds:F1} after=? trained=0");
+
+            account.TryPurchase("tool_belt");
+            account.TryPurchase("stamina_training");
+            yield return new WaitForSeconds(0.3f);
+
+            Debug.Log($"[S4C] GATE_BELT_SLOTS before=1 after={belt.EffectiveMaxSlots} owned=1");
+            Debug.Log($"[S4C] GATE_STAMINA_CAP before={PlayerStamina.BaseCapacitySeconds:F1} " +
+                      $"after={stamina.CapacitySeconds:F1} trained=1");
+
+            Check(belt.EffectiveMaxSlots == 2, $"tool_belt_not_effective slots={belt.EffectiveMaxSlots}");
+            Check(Mathf.Abs(stamina.CapacitySeconds - PlayerStamina.TrainedCapacitySeconds) < 0.01f,
+                $"stamina_training_not_effective capacity={stamina.CapacitySeconds:F1}");
+
+            if (failures > 0)
+            {
+                Application.Quit(1);
+                yield break;
+            }
+
             Teleport(vitals.transform, new Vector3(0f, 1f, 18f));
             Face(vitals.transform, new Vector3(0f, 0f, -1f));
             yield return new WaitForSeconds(0.4f);

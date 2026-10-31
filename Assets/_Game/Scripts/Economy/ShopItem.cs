@@ -11,7 +11,9 @@ namespace ScavengeNightmare.Economy
         Flashlight = 3,
         CarryPenalty = 4,
         SelfInjector = 5,
-        Medkit = 6
+        Medkit = 6,
+        ToolBelt = 7,
+        StaminaTraining = 8
     }
 
     /// <summary>

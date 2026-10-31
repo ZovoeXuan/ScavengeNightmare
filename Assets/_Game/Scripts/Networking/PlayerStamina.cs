@@ -1,9 +1,11 @@
+using ScavengeNightmare.Economy;
 using UnityEngine;
 
 namespace ScavengeNightmare.Networking
 {
     /// <summary>
-    /// S4B-5 体能：连续冲刺最多 7.5s（20s 一局里 37.5%，判据下限 35%），
+    /// S4C-1 体能：默认连续冲刺 5.0s（20s 一局的 25%），买过 `stamina_training`
+    /// 后升到 7.5s（37.5%，4B 的验收值）。
     /// 停跑后按 1.5/s 恢复，恢复到一半才能再次冲刺。
     ///
     /// 为什么是本地组件而不是服务端权威：玩家移动本身就是客户端权威
@@ -12,24 +14,32 @@ namespace ScavengeNightmare.Networking
     /// </summary>
     public sealed class PlayerStamina : MonoBehaviour
     {
-        /// <summary>满体力可连续冲刺的秒数（= 20s × 37.5%）。</summary>
-        public const float SprintCapacitySeconds = 7.5f;
+        /// <summary>未购买体能训练的连续冲刺秒数。</summary>
+        public const float BaseCapacitySeconds = 5f;
 
-        /// <summary>恢复速度（每秒）。约 5s 回满。</summary>
+        /// <summary>购买体能训练后的连续冲刺秒数（= 20s × 37.5%）。</summary>
+        public const float TrainedCapacitySeconds = 7.5f;
+
+        /// <summary>恢复速度（每秒）。5.0s 满体力约 3.3s 回满。</summary>
         public const float RecoveryPerSecond = 1.5f;
 
         /// <summary>力竭后至少恢复到这一比例才允许再次冲刺，避免「点一下回一丝、又立刻冲」。</summary>
         public const float ResumeFraction = 0.5f;
 
+        /// <summary>当前档位的连续冲刺容量：买过体能训练 7.5s，否则 5.0s。</summary>
+        public float CapacitySeconds => EquippedEffects.HasStaminaTraining
+            ? TrainedCapacitySeconds
+            : BaseCapacitySeconds;
+
         [SerializeField] private PlayerMotor motor;
 
-        private float remaining = SprintCapacitySeconds;
+        private float remaining = BaseCapacitySeconds;
         private bool exhausted;
 
         public bool CanSprint => !exhausted && remaining > 0f;
 
         /// <summary>0–1，HUD 与自动化都用它。</summary>
-        public float Normalized => Mathf.Clamp01(remaining / SprintCapacitySeconds);
+        public float Normalized => Mathf.Clamp01(remaining / CapacitySeconds);
 
         /// <summary>本次力竭前的连续冲刺秒数（自动化判据写日志用）。</summary>
         public float LastContinuousSprint { get; private set; }
@@ -42,6 +52,10 @@ namespace ScavengeNightmare.Networking
             {
                 motor = GetComponent<PlayerMotor>();
             }
+
+            remaining = CapacitySeconds;
+            Debug.Log($"[S4C] GATE_STAMINA_CAP base={BaseCapacitySeconds:F1} capacity={CapacitySeconds:F1} " +
+                      $"trained={(EquippedEffects.HasStaminaTraining ? 1 : 0)}");
         }
 
         private void Update()
@@ -77,15 +91,15 @@ namespace ScavengeNightmare.Networking
                 sprintElapsed = 0f;
             }
 
-            if (remaining >= SprintCapacitySeconds)
+            if (remaining >= CapacitySeconds)
             {
-                remaining = SprintCapacitySeconds;
+                remaining = CapacitySeconds;
                 return;
             }
 
-            remaining = Mathf.Min(SprintCapacitySeconds, remaining + RecoveryPerSecond * Time.deltaTime);
+            remaining = Mathf.Min(CapacitySeconds, remaining + RecoveryPerSecond * Time.deltaTime);
 
-            if (exhausted && remaining >= SprintCapacitySeconds * ResumeFraction)
+            if (exhausted && remaining >= CapacitySeconds * ResumeFraction)
             {
                 exhausted = false;
                 Debug.Log($"[S4B] S4B_STAMINA_RESUME normalized={Normalized:F2}");
@@ -95,7 +109,7 @@ namespace ScavengeNightmare.Networking
         /// <summary>测试钩子：把体力打满（不影响正式路径）。</summary>
         public void ResetStamina()
         {
-            remaining = SprintCapacitySeconds;
+            remaining = CapacitySeconds;
             exhausted = false;
             sprintElapsed = 0f;
         }
