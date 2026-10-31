@@ -33,6 +33,37 @@ rem     wrapper because "start /B" does not give it back to us.
 rem
 rem  Baseline kept untouched on purpose: Tools/run_regression_4a.bat still
 rem  runs the 4A-only matrix and is the rollback path if this file misbehaves.
+rem
+rem  EXIT CODES - three completely different situations, do not mix them up:
+rem    exit 0 = every case green
+rem    exit 1 = at least one case RED (real bug or a genuinely unstable case;
+rem             go read the case and the implementation)
+rem    exit 2 = STOPPED BY A GUARD, before any case ran (stale package, or the
+rem             exe / case list is missing). This is NOT a failing case.
+rem             Rebuild first, then run again.
+rem    exit 4 = runtime exception caught by S4ATestGuard
+rem  Anyone wiring this into a script or CI must branch on exit 2 separately:
+rem  treating "you forgot to rebuild" as "a test failed" sends people hunting
+rem  for a bug that does not exist.
+rem  Related: git pull / git checkout refresh the mtime of the touched files,
+rem  so the stale guard will fire right after a pull until you rebuild. That is
+rem  the intended behaviour, not a false alarm.
+rem
+rem  STALE GUARD - known limits (do not assume it is stronger than it is):
+rem    a) %%~tF only resolves to the MINUTE. If a source edit and the build land
+rem       in the same minute, src == bin and the guard cannot detect staleness.
+rem       This is a ceiling of %%~tF, not a bug.
+rem    b) The 12-char key is built by slicing a fixed-width "YYYY/MM/DD HH:MM"
+rem       string, so it also works on locales that print YYYY-MM-DD. It BREAKS
+rem       on MM/DD/YYYY or on formats with a weekday prefix. %%~tF prints no
+rem       weekday on this machine (verified); re-verify after moving to another
+rem       machine or locale.
+rem    c) .meta files are deliberately NOT scanned. Unity rewrites them on every
+rem       import (839 of them here), so a plain editor launch would flag the
+rem       package stale and stop all cases while the package is in fact fresh.
+rem       Fail-closed is carried by "package age = newest of three build
+rem       artifacts" + "sources = newest of five hand-written extensions" +
+rem       limit (a) above, not by counting Unity's bookkeeping files.
 rem ===========================================================================
 setlocal enabledelayedexpansion
 
@@ -82,7 +113,10 @@ for %%F in ("%EXE%" "%BINDATA%\Managed\Assembly-CSharp.dll" "%BINDATA%\globalgam
   )
 )
 
-for /r "%ROOT%\Assets" %%F in (*.cs *.prefab *.unity *.asset *.mat *.physicMaterial *.meta) do (
+rem  Sources = the five kinds of hand-written asset. NO .meta here on purpose:
+rem  Unity rewrites .meta on import, and 839 of them would turn this guard into
+rem  a false-alarm machine that stops the whole matrix while the package is new.
+for /r "%ROOT%\Assets" %%F in (*.cs *.prefab *.unity *.asset *.mat *.physicMaterial) do (
   set "RAW=%%~tF"
   set "KEY=!RAW:~0,4!!RAW:~5,2!!RAW:~8,2!!RAW:~11,2!!RAW:~14,2!"
   if "!KEY!" GTR "!SRCKEY!" set "SRCKEY=!KEY!"

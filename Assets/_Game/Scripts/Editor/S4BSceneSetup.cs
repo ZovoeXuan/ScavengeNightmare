@@ -17,6 +17,16 @@ namespace ScavengeNightmare.EditorTools
     /// <summary>
     /// Sprint 4B 生存系统装配：把 PlayerVitals / 救援 / 团灭 / 倒地 HUD 挂到预制体与场景。
     /// 幂等；不新建场景，不手改 YAML。
+    ///
+    /// ⚠ **这不是字节幂等的，commit 之后不要再跑 Setup()。**
+    /// 每次运行都会重写 Night1.unity / Safehouse.unity：对象内容等价（名字、坐标、
+    /// 旋转、profileId 全部一致），但 fileID 全部重排，diff 会有几百上千行。
+    /// 要装配新资源时：先确认工作区干净 → 跑 Setup() → 把场景改动**单独**提交。
+    /// 反过来做（先提交再补跑 Setup）会得到一次「内容没变、但包行为变了」的诡异重建：
+    /// 实测过一次，`-s4bmon` 的测速用例从 3.20 掉到 3.01 并稳定复现。
+    /// 另外 RebuildAnchors() 是用 FindObjectsByType 的返回顺序把
+    /// AnchorProfiles 贴到现有锚点位置上的，那个顺序未定义——所以**锚点名与坐标的
+    /// 对应关系跨 Setup 运行不稳定**，不要按名字定位某个道具，要按坐标定位。
     /// </summary>
     public static class S4BSceneSetup
     {
