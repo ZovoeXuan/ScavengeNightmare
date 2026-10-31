@@ -21,8 +21,8 @@
 |---|---|---|---|---|
 | 4A | `Tools/regression_4a_cases.txt` | 13 | `S4A_REGRESSION_OK` | ✅ `passes=13 expected=13` |
 | 4B | `Tools/regression_4b_cases.txt` | 15 | `S4B_REGRESSION_OK` | ✅ `passes=15 expected=15` |
-| 4C | `Tools/regression_4c_cases.txt` | 18 | `S4C_REGRESSION_OK` | ✅ `passes=18 expected=18`（`RUN_DIR=...\Logs\s4_reg\周六022610-174732`；`STALE_CHECK_OK src=202610311745 bin=202610311746`） |
-| 并集 | `Tools/regression_cases.txt` | 31（`# expected_min: 31`） | `S4_REGRESSION_OK` | ✅ `passes=31 expected=31`（`RUN_DIR=...\Logs\s4_reg\周六022610-175450`；`S4_REGRESSION_BREAKDOWN s4a pass=14 fail=0 s4b pass=15 fail=0 s4c pass=2 fail=0`；`s4baudio` PASS） |
+| 4C | `Tools/regression_4c_cases.txt` | 18 | `S4C_REGRESSION_OK` | ✅ `passes=18 expected=18`（`RUN_DIR=...\Logs\s4_reg\周六022610-195124`；`STALE_CHECK_OK src=202610311949 bin=202610311950`） |
+| 并集 | `Tools/regression_cases.txt` | 31（`# expected_min: 31`） | `S4_REGRESSION_OK` | ✅ `passes=31 expected=31`（`RUN_DIR=...\Logs\s4_reg\周六022610-195906`；`S4_REGRESSION_BREAKDOWN s4a pass=14 fail=0 s4b pass=15 fail=0 s4c pass=2 fail=0`；`s4baudio` PASS） |
 
 > `expected` 由清单行数推导，不硬编码；`STALE_CHECK_OK` 保证跑的是「源码时间戳之后构建」的二进制。
 
@@ -41,7 +41,7 @@
 
 | # | 注入 | 期望 | 实测 |
 |---|---|---|---|
-| C1 | 未购买 `tool_belt` 用第二槽 | `GATE_BELT_REJECT reason=locked` | 部分：前置读数 1 槽已覆盖，显式拒绝行**未见独立断言**（§5-G5） |
+| C1 | 未购买 `tool_belt` 用第二槽 | `GATE_BELT_REJECT reason=locked` | ✅ `-s4bbelt` 购买前探针：第 1 件成功、第 2 件拒绝，`S4C_BELT_LOCKED_OK slots=1 count=1 second=rejected` |
 | C2 | 未购买 `stamina_training` 连跑 | `pct=25.0`，不得报 37.5 | ✅ `S4C_SHOP8` 前置 `capacity=5.0 trained=0` |
 | C3 | 安全屋 1/2 ready | 不换关 + `S4C_CONTINUE_WAIT` | ✅ 双方 `LONE` 行 + `WAIT seconds=0.0..4.0` |
 | C4 | Night1 无终端买货 | `wrong_scene` | ✅ `S4B_LEG_WRONG_SCENE_PROBE reason=no_terminal_in_night` |
@@ -92,7 +92,7 @@
 | X3 | 推车成为强制撤离容器 | 4A 已证徒手可搬 35kg（`S4A_CART_HEAVY_OK`） | ✅ |
 | X4 | 无预警攻击 / 无解诅咒 | 4B 诅咒前兆 1.5s 已实现且有 `cue=curse_omen lead=1.5` | ✅ 代码路径 |
 | X5 | 性能崩 | `S4B_PERF_OK fps=120`；双人帧率待测 | 部分 |
-| X6 | 测试本身无效（C1–C3 未捕获） | C3/C4/C5 已捕获；C1 见 §5-G5 | 部分 |
+| X6 | 测试本身无效（C1–C3 未捕获） | C1/C3/C4/C5 均已捕获 | ✅ |
 | X7 | 强杀证据不合格 | 4A 强杀证据保留（`Tools/s4a_save_suite.sh`） | ✅ |
 | X8 | 卡死三态第 3 种 >0 | 自动化 0；真人待记 | 部分 |
 | X9 | 身份污染 | 所有夹具 `TraitSettings.ForceNoTraits=true`，`traits=none` 前置行在 | ✅ |
@@ -107,7 +107,7 @@
 | G2 | 只有一张 Night1 图，L1/L2/L3 共用（配额 1800/2400/2800） | A10 时长可能偏短 | P1 三图 |
 | G3 | 无封印系统；`CURSED_TEAM` / `CURSED_ZONE` / `SEALABLE` 不覆盖 | 规则缺口 | P1 |
 | G4 | ~~`regression_4c_cases.txt` / `run_regression_4c.bat` 未建~~ → **已建**（18 行，`S4C_REGRESSION_OK passes=18 expected=18`） | 无（4C 独立门已成立） | 已收口 |
-| G5 | C1（第二槽 `reason=locked` 显式拒绝）无独立断言 | 反向验证矩阵不完整 | 4C 收尾 |
+| G5 | ~~C1（第二槽 `reason=locked` 显式拒绝）无独立断言~~ → **已补**（`-s4bbelt` 购买前探针 + `S4C_BELT_LOCKED_OK`，不占门行） | 无（C1–C6 全部有证据） | 已收口 |
 | G6 | 推车轮声仅服务端播放 | 客户端听不见 | 正式素材阶段一并收 |
 | G7 | 双人仅同机/虚拟局域网，未做跨机公网；延迟只覆盖 ~200ms 档 | A12 外推，非实测 | 记录口径 |
 | G8 | 未验四难度、真刚体侧翻 | 范围外 | — |
@@ -118,7 +118,7 @@
 ## 六、签字栏
 
 ```
-自动化：□ 4A 13/13  □ 4B 15/15  □ 并集 31/31  □ C1–C6（C1 待补）
+自动化：□ 4A 13/13  □ 4B 15/15  □ 4C 18/18  □ 并集 31/31  □ C1–C6
 真人：  □ A1  □ A2  □ A10  □ A11（+ 访谈表原件）
 文档：  □ Q4 条款（§3）  □ 已知缺口（§5）
 结论：  □ PASS   □ CONCERNS（需修：______，复测：______）   □ FAIL（阻断：______）

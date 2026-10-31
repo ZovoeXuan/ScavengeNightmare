@@ -139,6 +139,10 @@ namespace ScavengeNightmare.Networking
             Debug.Log($"[S4C] GATE_BELT_SLOTS before={belt.EffectiveMaxSlots} after=? owned=0");
             Debug.Log($"[S4C] GATE_STAMINA_CAP before={stamina.CapacitySeconds:F1} after=? trained=0");
 
+            // C1：未购买 tool_belt 时第 2 件必须被显式拒绝（reason=locked），且槽位仍是 1。
+            // 放在购买前，用同一套「最近合规小件」真实路径，不看被测对象自报的常量。
+            yield return RunLockedSlotProbe();
+
             account.TryPurchase("tool_belt");
             account.TryPurchase("stamina_training");
             yield return new WaitForSeconds(0.3f);
@@ -180,6 +184,49 @@ namespace ScavengeNightmare.Networking
 
             yield return new WaitForSeconds(0.3f);
             Application.Quit(ok ? 0 : 1);
+        }
+
+        // ---------------- C1：未购买时的第二槽拒绝 ----------------
+
+        private IEnumerator RunLockedSlotProbe()
+        {
+            GrabbableProp can = FindProp("can");
+            if (can == null)
+            {
+                Fail("locked_probe_no_can");
+                yield break;
+            }
+
+            // 与 RunBelt 同一站位与摆法：G 走「最近合规小件」，离太远会抓到别的货。
+            Teleport(vitals.transform, new Vector3(0f, 1f, 18f));
+            Face(vitals.transform, new Vector3(0f, 0f, -1f));
+            yield return new WaitForSeconds(0.4f);
+            MoveProp(can, vitals.transform.position + vitals.transform.forward * 1.0f + Vector3.up * 0.3f);
+            yield return new WaitForSeconds(0.3f);
+
+            int mark = Captured.Count;
+
+            // 默认 1 槽：第 1 件必须成功。
+            bool first = belt.ServerBeltNearest();
+            Check(first, "locked_probe_first_not_accepted");
+            Check(belt.SlotCount == 1, $"locked_probe_first_count actual={belt.SlotCount} want=1");
+
+            // 第 2 件必须拒绝，且 reason=locked（不是 slot_full）：这就是 C1。
+            bool second = belt.ServerBeltNearest();
+            Check(!second, "locked_probe_second_accepted");
+            Check(belt.SlotCount == 1, $"locked_probe_second_count actual={belt.SlotCount} want=1");
+
+            string line = FindLockedLineFrom(mark);
+            Check(line != null, "locked_probe_reason_line_missing");
+
+            Debug.Log($"[S4C] S4C_BELT_LOCKED_OK slots={belt.EffectiveMaxSlots} count={belt.SlotCount} " +
+                      $"second={(second ? "accepted" : "rejected")} line={(line ?? "none")}");
+
+            // 清场：罐头落地并挪远，免得干扰 RunBelt 的「最近小件」选择。
+            belt.ServerDropAll("locked_probe");
+            yield return new WaitForSeconds(0.3f);
+            MoveProp(can, new Vector3(0f, 0.5f, 26f));
+            yield return new WaitForSeconds(0.2f);
         }
 
         // ---------------- 体能 ----------------
@@ -319,6 +366,21 @@ namespace ScavengeNightmare.Networking
             }
 
             return -1;
+        }
+
+        /// <summary>C1：只认本次探针之后、同时带 GATE_BELT_REJECT 与 reason=locked 的原始日志行。</summary>
+        private static string FindLockedLineFrom(int mark)
+        {
+            for (int i = mark; i < Captured.Count; i++)
+            {
+                string text = Captured[i];
+                if (text != null && text.Contains("GATE_BELT_REJECT") && text.Contains("reason=locked"))
+                {
+                    return text;
+                }
+            }
+
+            return null;
         }
 
         private void OnEnable()

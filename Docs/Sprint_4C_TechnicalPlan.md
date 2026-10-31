@@ -223,7 +223,7 @@ S4A_SHOP_REJECT scene=Night1 reason=wrong_scene（负向注入仍然要有）
 
 | # | 注入 | 期望被捕获 |
 |---|---|---|
-| C1 | 未购买 `tool_belt` 时按 G 试图用第二槽 | 显式拒绝 `GATE_BELT_REJECT reason=locked`；不得静默忽略 |
+| C1 | 未购买 `tool_belt` 时按 G 试图用第二槽 | 显式拒绝 `GATE_BELT_REJECT reason=locked`；不得静默忽略（覆盖：`-s4bbelt` 购买前探针，`S4C_BELT_LOCKED_OK`） |
 | C2 | 未购买 `stamina_training` 时连续冲刺 | 5.0s 力竭，`pct=25.0`；不得报 37.5% |
 | C3 | 安全屋只有 1/2 人 ready | 不换关 + `S4C_CONTINUE_WAIT`；一人即换关判 FAIL |
 | C4 | 在 Night1 调 `ShopTerminal.ServerHandleBuy` | `wrong_scene`；场景里根本没有终端时也不得报 success |

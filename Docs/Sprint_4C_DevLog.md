@@ -135,8 +135,8 @@
 |---|---|---|
 | 4B | `S4B_REGRESSION_OK passes=15 expected=15` | `RUN_DIR=...\Logs\s4_reg\周六022610-152239`；`CASES_CHECK_OK expected=15 floor=15`；`STALE_CHECK_OK src=202610311521 bin=202610311522` |
 | 4A | `S4A_REGRESSION_OK passes=13 expected=13` | `RUN_DIR=...\Logs\s4a_reg\周六022610-153312`；`-s4ashop` 已迁到安全屋 |
-| 4C | `S4C_REGRESSION_OK passes=18 expected=18` | `RUN_DIR=...\Logs\s4_reg\周六022610-174732`；`STALE_CHECK_OK src=202610311745 bin=202610311746`；`s4baudio` PASS |
-| 并集 | `S4_REGRESSION_OK passes=31 expected=31` | `RUN_DIR=...\Logs\s4_reg\周六022610-175450`；`CASES_CHECK_OK expected=31 floor=31`；`STALE_CHECK_OK src=202610311745 bin=202610311746`；`BREAKDOWN s4a 14 / s4b 15 / s4c 2` |
+| 4C | `S4C_REGRESSION_OK passes=18 expected=18` | `RUN_DIR=...\Logs\s4_reg\周六022610-195124`；`STALE_CHECK_OK src=202610311949 bin=202610311950`；`s4baudio` PASS |
+| 并集 | `S4_REGRESSION_OK passes=31 expected=31` | `RUN_DIR=...\Logs\s4_reg\周六022610-195906`；`CASES_CHECK_OK expected=31 floor=31`；`STALE_CHECK_OK src=202610311949 bin=202610311950`；`BREAKDOWN s4a 14 / s4b 15 / s4c 2` |
 
 清单变更：`regression_4b_cases.txt` 14 → **15**（新增 `s4bshop8`）；新增 `regression_4c_cases.txt`（18）；并集 `regression_cases.txt` 28 → **31**（`# expected_min: 31`）；`expected` 仍由行数推导。
 
@@ -145,7 +145,7 @@
 ## 6. 与计划的偏差 / 仍欠
 
 1. ~~**4C 门尚未建**~~ → **已建**（18 行，见附录 C）。
-2. ~~**C1/C2 反向注入还不是独立用例**~~ → C2 已由 `-s4bshop8` 前置读数覆盖；C1 的显式 `reason=locked` 仍无独立断言（缺口 G5）。
+2. ~~**C1/C2 反向注入还不是独立用例**~~ → **已完成**：C2 由 `-s4bshop8` 前置读数覆盖；C1 在 `-s4bbelt` 购买前加探针（第 1 件成功、第 2 件 `reason=locked`）。
 3. ~~S4C-2 未做~~ → **已完成，见附录 A**；A2 仍只有代码路径证据。
 4. ~~S4C-4 未做~~ → **已完成，见附录 B**；正式素材仍待用户后补（T1）。
 5. ~~**S4C-5 未做**~~ → **已完成，见附录 C**；A1/A2/A10/A11 真人门仍未开。
@@ -318,15 +318,23 @@
 
 ```
 CASES_CHECK_OK expected=18 floor=18
-STALE_CHECK_OK src=202610311745 bin=202610311746
+STALE_CHECK_OK src=202610311949 bin=202610311950
+PASS s4bbelt
 PASS s4baudio
 S4C_REGRESSION_BREAKDOWN s4a pass=1 fail=0 s4b pass=15 fail=0 s4c pass=2 fail=0
 S4C_REGRESSION_OK passes=18 expected=18
 ```
 
+C1 探针原文（`s4bbelt.log`）：
+
+```
+[S4C] GATE_BELT_REJECT netId=3 reason=locked slots=1
+[S4C] S4C_BELT_LOCKED_OK slots=1 count=1 second=rejected line=[S4C] GATE_BELT_REJECT netId=3 reason=locked slots=1
+```
+
 - 18 = 4B 继承 15 + 4C 新增 3（`s4clegclienthost`/`s4clegclient` 对 + `s4baudio`）；`s4bshop8` 归 4C-1。
 - 4C 门的意义是**防 4B 漂移**：4C 改了 `BeltSlot`/`PlayerStamina`/`ShopCatalog`/`TeamAccount`/`CartController`/`CurseRuntime`/易碎件，任一 4B 用例变红都算 4C 回归。
-- C1–C6 不占行（runner 只接受 PASS）：C5 走 `-s4baudio -s4caudioflat` 手工注入；C3 内含于 `s4clegclient` 对；C1 仍只有前置读数，显式 `reason=locked` 未独立断言（缺口 G5）。
+- C1–C6 不占行（runner 只接受 PASS）：C5 走 `-s4baudio -s4caudioflat` 手工注入；C3 内含于 `s4clegclient` 对；C1 在 `-s4bbelt` 购买前加探针——先挂 1 件成功，再挂第 2 件必须 `GATE_BELT_REJECT reason=locked` 且 `S4C_BELT_LOCKED_OK` 带原始日志行（缺口 G5 已收口）。
 
 ## C.4 纪律边界
 

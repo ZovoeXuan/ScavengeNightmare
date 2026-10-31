@@ -28,8 +28,10 @@
 # Reverse injections (C1-C6) are NOT rows here: the runner only accepts PASS.
 #   C5 -> -s4baudio -s4caudioflat  (distinguishable=1 -> S4C_AUDIO_FAIL)
 #   C3 -> covered inside the s4clegclient pair (lone 1/2 must not advance)
-#   C1/C2 -> partially covered by s4bshop8 pre-readings; the explicit
-#           GATE_BELT_REJECT reason=locked line still has no standalone row.
+#   C1/C2 -> covered inside s4bshop8 / s4bbelt: C2 reads the pre-purchase
+#           capacity=5.0 baseline; C1 beltes one small prop before buying
+#           tool_belt and requires the second one to be rejected with
+#           GATE_BELT_REJECT reason=locked (S4C_BELT_LOCKED_OK).
 #
 # --- Inherited from Sprint 4B-1/2/3 (8) ---
 
