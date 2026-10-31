@@ -21,8 +21,8 @@
 |---|---|---|---|---|
 | 4A | `Tools/regression_4a_cases.txt` | 13 | `S4A_REGRESSION_OK` | ✅ `passes=13 expected=13` |
 | 4B | `Tools/regression_4b_cases.txt` | 15 | `S4B_REGRESSION_OK` | ✅ `passes=15 expected=15` |
-| 4C | `Tools/regression_4c_cases.txt` | 18 | `S4C_REGRESSION_OK` | ✅ `passes=18 expected=18`（`RUN_DIR=...\Logs\s4_reg\周六022610-195124`；`STALE_CHECK_OK src=202610311949 bin=202610311950`） |
-| 并集 | `Tools/regression_cases.txt` | 31（`# expected_min: 31`） | `S4_REGRESSION_OK` | ✅ `passes=31 expected=31`（`RUN_DIR=...\Logs\s4_reg\周六022610-195906`；`S4_REGRESSION_BREAKDOWN s4a pass=14 fail=0 s4b pass=15 fail=0 s4c pass=2 fail=0`；`s4baudio` PASS） |
+| 4C | `Tools/regression_4c_cases.txt` | 18 | `S4C_REGRESSION_OK` | ✅ `passes=18 expected=18`（`RUN_DIR=...\Logs\s4_reg\周六022610-222756`；`STALE_CHECK_OK src=202610312225 bin=202610312227`） |
+| 并集 | `Tools/regression_cases.txt` | 31（`# expected_min: 31`） | `S4_REGRESSION_OK` | ✅ `passes=31 expected=31`（`RUN_DIR=...\Logs\s4_reg\周六022610-223530`；`S4_REGRESSION_BREAKDOWN s4a pass=14 fail=0 s4b pass=15 fail=0 s4c pass=2 fail=0`；`s4baudio` PASS） |
 
 > `expected` 由清单行数推导，不硬编码；`STALE_CHECK_OK` 保证跑的是「源码时间戳之后构建」的二进制。
 
@@ -47,6 +47,17 @@
 | C4 | Night1 无终端买货 | `wrong_scene` | ✅ `S4B_LEG_WRONG_SCENE_PROBE reason=no_terminal_in_night` |
 | C5 | 四 cue 同波形 | `distinguishable=1` → FAIL | ✅ `-s4caudioflat` → `S4C_AUDIO_FAIL`（exit=1） |
 | C6 | 代填访谈 | A11 FAIL | 人工项，见 §2 |
+
+### 1.4 正式试玩包（`-map=p0`）
+
+| 项 | 期望 | 实测 |
+|---|---|---|
+| 场景列表 | Night1 + Safehouse（换关按名加载） | ✅ `BUILD_P0 formal=true test_define=off scenes=Night1,Safehouse output=Builds/P0/ScavengeNightmare.exe` |
+| 测试宏 | 不带 `S4A_TEST_BUILD`（构建日志不得出现 `BUILD_DEFINES_ADDED`） | ✅ 日志无该行；`BUILD_OK ... scene=P0` |
+| 跳过校验入口 | 正式包内恒拒绝 | ✅ `GrabController.ServerForceGrab` 的 `#else` 分支只打 `S4A_FORCEGRAB_DENIED reason=not_test_build` 并返回 false |
+| 冒烟启动 | 进 Night1、进程存活、无异常 | ✅ `S4A_ROUTE_BOOT scene=Night1`；20s 存活、Responding=True；除「Steam 未启动」外无异常 |
+
+> 包路径 `Builds/P0/ScavengeNightmare.exe`。真人验收一律用这个包，**不要**用 `Builds/Sprint4A`（那是带测试宏的回归包）。
 
 ---
 

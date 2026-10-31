@@ -135,8 +135,8 @@
 |---|---|---|
 | 4B | `S4B_REGRESSION_OK passes=15 expected=15` | `RUN_DIR=...\Logs\s4_reg\周六022610-152239`；`CASES_CHECK_OK expected=15 floor=15`；`STALE_CHECK_OK src=202610311521 bin=202610311522` |
 | 4A | `S4A_REGRESSION_OK passes=13 expected=13` | `RUN_DIR=...\Logs\s4a_reg\周六022610-153312`；`-s4ashop` 已迁到安全屋 |
-| 4C | `S4C_REGRESSION_OK passes=18 expected=18` | `RUN_DIR=...\Logs\s4_reg\周六022610-195124`；`STALE_CHECK_OK src=202610311949 bin=202610311950`；`s4baudio` PASS |
-| 并集 | `S4_REGRESSION_OK passes=31 expected=31` | `RUN_DIR=...\Logs\s4_reg\周六022610-195906`；`CASES_CHECK_OK expected=31 floor=31`；`STALE_CHECK_OK src=202610311949 bin=202610311950`；`BREAKDOWN s4a 14 / s4b 15 / s4c 2` |
+| 4C | `S4C_REGRESSION_OK passes=18 expected=18` | `RUN_DIR=...\Logs\s4_reg\周六022610-222756`；`STALE_CHECK_OK src=202610312225 bin=202610312227`；`s4baudio` PASS |
+| 并集 | `S4_REGRESSION_OK passes=31 expected=31` | `RUN_DIR=...\Logs\s4_reg\周六022610-223530`；`CASES_CHECK_OK expected=31 floor=31`；`STALE_CHECK_OK src=202610312225 bin=202610312227`；`BREAKDOWN s4a 14 / s4b 15 / s4c 2` |
 
 清单变更：`regression_4b_cases.txt` 14 → **15**（新增 `s4bshop8`）；新增 `regression_4c_cases.txt`（18）；并集 `regression_cases.txt` 28 → **31**（`# expected_min: 31`）；`expected` 仍由行数推导。
 
@@ -339,4 +339,38 @@ C1 探针原文（`s4bbelt.log`）：
 ## C.4 纪律边界
 
 自动化全绿只到「代码路径 + 4B 不漂移」。A1（单人 30–40 分钟）、A2（双人全队确认）、A10（三关时长）、A11（真人体验 + 访谈）**一门未开**，`P0_Delivery_Report.md` 的真人段留空即代表未跑，不得用自动化结果填写。
+
+---
+
+# 附录 D · 正式试玩包（`-map=p0`）
+
+> 日期：2026-10-31　动机：此前只有 `-map=sprint4a` 回归包（带 `S4A_TEST_BUILD`），真人验收没有干净包可用。
+
+## D.1 改动
+
+| 文件 | 改动 |
+|---|---|
+| `Editor/BuildWindows.cs` | 新增 `-map=p0`：场景 `Night1 + Safehouse`、输出 `Builds/P0`、**不加** `S4A_TEST_BUILD`；构建日志多打一行 `BUILD_P0 formal=true test_define=off ...` |
+| `Economy/LevelRouteService.cs` | `Awake` 增加 `S4A_ROUTE_BOOT scene=`，作为「进的是哪张图」的启动自检 |
+
+## D.2 证据
+
+```
+[BUILD] BUILD_P0 formal=true test_define=off scenes=Night1,Safehouse output=Builds/P0/ScavengeNightmare.exe
+BUILD_OK Builds/P0/ScavengeNightmare.exe scene=P0 appIdFile=D:\drlj\game\Builds\P0\steam_appid.txt
+（全文无 BUILD_DEFINES_ADDED）
+```
+
+冒烟（`-batchmode -nographics` 启动 20s）：`S4A_ROUTE_BOOT scene=Night1`，进程存活且 Responding=True；唯一异常是「Steam 未启动」（环境项）。
+
+## D.3 试玩包里的测试钩子
+
+- `S4A_TEST_BUILD` 未定义 → `GrabController.ServerForceGrab` 走 `#else` 分支，恒返回 false 并打 `S4A_FORCEGRAB_DENIED reason=not_test_build`。
+- 其余夹具（`S4A*Test`）仍在包里，但没有 `-s4a*` 参数时全部 `enabled=false`，不干扰真人数据；runbook §2.2 仍要求不带参数。
+
+## D.4 回归
+
+重打 sprint4a 后：4C 门 `passes=18 expected=18`（`RUN_DIR=...\Logs\s4_reg\周六022610-222756`），并集 `passes=31 expected=31`（`RUN_DIR=...\Logs\s4_reg\周六022610-223530`，`STALE_CHECK_OK src=202610312225 bin=202610312227`）。
+
+> 结论口径不变：正式包就绪 ≠ A1/A2 通过；A1/A2/A10/A11 仍待真人执行。
 

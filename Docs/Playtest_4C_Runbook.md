@@ -37,10 +37,19 @@
 ### 2.1 出包
 
 ```
-Unity.exe -batchmode -quit -projectPath d:\drlj\game -executeMethod BuildWindows.Build -map=sprint4a -logFile Logs\build_4c.log
+Unity.exe -batchmode -quit -projectPath d:\drlj\game -executeMethod BuildWindows.Build -map=p0 -logFile Logs\build_p0.log
 ```
 
-成功标志：`BUILD_OK Builds/Sprint4A/ScavengeNightmare.exe scene=Night1 appIdFile=...`
+成功标志：
+
+```
+[BUILD] BUILD_P0 formal=true test_define=off scenes=Night1,Safehouse output=Builds/P0/ScavengeNightmare.exe
+BUILD_OK Builds/P0/ScavengeNightmare.exe scene=P0 appIdFile=...
+```
+
+`-map=p0` 是**正式试玩包**：场景列表 `Night1 + Safehouse`，且**不加** `S4A_TEST_BUILD`（日志里不能出现 `BUILD_DEFINES_ADDED`）。`Builds/Sprint4A` 是回归专用包（带测试宏），**不要发给测试者**。
+
+包路径：`Builds/P0/ScavengeNightmare.exe`。
 
 包目录结构：
 
@@ -53,6 +62,8 @@ steam_appid.txt
 PlaytestLogs/            ← 只有房主的机器会写
 ```
 
+启动自检：`Player.log` 第一屏应出现 `[S4A] S4A_ROUTE_BOOT scene=Night1`；若显示别的场景名，说明包或启动目录不对。
+
 ### 2.2 启动参数（关键）
 
 | 轮次 | 参数 | 含义 |
@@ -61,6 +72,7 @@ PlaytestLogs/            ← 只有房主的机器会写
 | 可选手感 | `-feel=light`（默认） | 4A 起默认就是 light；不带也行，**但不要在局中按 1/2/3 热切** |
 
 > 出现任何 `-s4a` / `-s4b` / `-s4c` 字样 → 停止测试，重新用干净快捷方式启动。
+> P0 包里没有可用的跳过校验入口（`ServerForceGrab` 恒返回 false 并打 `S4A_FORCEGRAB_DENIED reason=not_test_build`），但流程仍按「不带」执行。
 
 ### 2.3 键位（发给朋友，别让他们现场摸索）
 

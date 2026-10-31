@@ -42,6 +42,10 @@ namespace ScavengeNightmare.Economy
 
         private void Awake()
         {
+            // 正式试玩包也需要一条可核对的「进的是哪张图」证据：玩家反馈卡住时，
+            // 先看 Player.log 的这行就能排除「进错场景」。
+            Debug.Log($"[S4A] S4A_ROUTE_BOOT scene={SceneManager.GetActiveScene().name}");
+
             // 本组件挂在 NetworkManager 物体上，而 Night1 与 Safehouse 的换关是
             // 「重入同一个场景」。重入 Night1 时 Mirror 会实例化一份新的 NM（自带一份本组件），
             // Awake 跑完后立刻以「Multiple NetworkManagers detected」销毁这份重复对象。
