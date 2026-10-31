@@ -234,6 +234,14 @@ namespace ScavengeNightmare.Combat
                 }
             }
 
+            // 4B-5：腰带上的小件同样必须掉。不做这一步会出现「人倒了，腰上的东西还挂着」，
+            // 队友把你救起来之后等于白捡一次负重豁免。
+            BeltSlot belt = GetComponent<BeltSlot>();
+            if (belt != null)
+            {
+                belt.ServerDropOnDowned();
+            }
+
             ApplyDownedVisual(true);
             Debug.Log($"[S4B] GATE_DOWN target={netId} hp={DownedHp} source={source}");
         }

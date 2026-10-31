@@ -447,7 +447,7 @@ namespace ScavengeNightmare.Economy
             visitConsumables.Clear();
             PurchaseWindowOpen = true;
             PurchaseWindowClosedAt = 0f;
-            Debug.Log($"[S4A] GATE_LEVEL n={legIndex} quota={legQuota} source={source} before={balance} after={balance}");
+            Debug.Log($"[S4A] GATE_LEVEL_ADVANCE n={legIndex} quota={legQuota} source={source} before={balance} after={balance}");
         }
 
         /// <summary>

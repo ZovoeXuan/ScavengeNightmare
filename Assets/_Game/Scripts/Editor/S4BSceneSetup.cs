@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Mirror;
 using ScavengeNightmare.Combat;
 using ScavengeNightmare.Curses;
@@ -42,6 +43,27 @@ namespace ScavengeNightmare.EditorTools
         private const string GreeterProfilePath = MonsterProfileDir + "/PlasticGreeter.asset";
         private const string ScreamProfilePath = MonsterProfileDir + "/ScreamCan.asset";
         private const string ShopCatalogPath = "Assets/_Game/Resources/ShopCatalog.asset";
+        private const string LegTablePath = "Assets/_Game/Resources/LegContentTable.asset";
+
+        /// <summary>S4B-5 三关：每关锚点数与货值总额（与验收行逐字一致）。</summary>
+        private static readonly int[] LegAnchorCounts = { 12, 14, 16 };
+        private static readonly int[] LegTotalValues = { 3155, 4365, 4785 };
+
+        /// <summary>
+        /// L1/L2/L3 = 12/14/16 件的差值来源：
+        ///   cabinet 在 L1+L3、不在 L2（mask 5）；tv/tire/statue 只在 L2+L3（mask 6）；
+        ///   三个 can 中第三个只在 L3（mask 4）。
+        /// </summary>
+        private static readonly (string profile, int mask)[] LegMaskRules =
+        {
+            ("cabinet", 5),
+            ("tv", 6),
+            ("tire", 6),
+            ("statue", 6)
+        };
+
+        /// <summary>三个 can 里只有第三个是 L3 专属（L1/L2 各少一件）。</summary>
+        private const int ThirdCanLegMask = 4;
 
         // ---- S4B-4 两件诅咒 ----
         private const string CurseMat = "Assets/_Game/Data/Materials/PropType_Cursed.mat";
@@ -74,6 +96,7 @@ namespace ScavengeNightmare.EditorTools
 
             EnsurePlayerComponents();
             EnsureGameRootNoiseState();
+            EnsureLegContentTable();
             EnsureMonsterAssets();
             EnsureCurseAssets();
             EnsureNightComponents();
@@ -102,6 +125,8 @@ namespace ScavengeNightmare.EditorTools
             Check(player != null && player.GetComponent<RevivePrompt>() != null, "player_revive_prompt");
             Check(player != null && player.GetComponent<NoiseHud>() != null, "player_noise_hud");
             Check(player != null && player.GetComponent<CurseHud>() != null, "player_curse_hud");
+            Check(player != null && player.GetComponent<BeltSlot>() != null, "player_belt_slot");
+            Check(player != null && player.GetComponent<PlayerStamina>() != null, "player_stamina");
 
             ShopCatalog catalog = AssetDatabase.LoadAssetAtPath<ShopCatalog>(ShopCatalogPath);
             Check(catalog != null && catalog.Count >= 6, $"shop_catalog_{(catalog != null ? catalog.Count : 0)}");
@@ -146,6 +171,9 @@ namespace ScavengeNightmare.EditorTools
             Check(nm != null && nm.GetComponent<MonsterDirector>() != null, "monster_director");
             Check(nm != null && nm.GetComponent<CurseRuntime>() != null, "curse_runtime");
             Check(nm != null && nm.GetComponent<S4BCurseTest>() != null, "curse_test");
+            Check(nm != null && nm.GetComponent<S4BLegTest>() != null, "leg_test");
+            Check(nm != null && nm.GetComponent<S4BBeltTest>() != null, "belt_test");
+            Check(nm != null && nm.GetComponent<S4BPerfTest>() != null, "perf_test");
 
             CurseRuntime curseRuntime = nm != null ? nm.GetComponent<CurseRuntime>() : null;
             if (curseRuntime != null)
@@ -183,11 +211,59 @@ namespace ScavengeNightmare.EditorTools
 
             Check(monsterRegistered, "monster_registered");
 
+            // S4B-5 三关表：配额/件数/怪物/诅咒/安全期必须与验收行逐字一致。
+            LegContentTable legTable = AssetDatabase.LoadAssetAtPath<LegContentTable>(LegTablePath);
+            Check(legTable != null, "leg_table_asset");
+
+            if (legTable != null)
+            {
+                int[] quotas = { 1800, 2400, 2800 };
+                int[] props = { 12, 14, 16 };
+                int[] monsters = { 1, 3, 4 };
+                int[] curses = { 0, 1, 2 };
+
+                for (int leg = 1; leg <= 3; leg++)
+                {
+                    Check(legTable.QuotaFor(leg) == quotas[leg - 1], $"leg_quota_{leg}_{legTable.QuotaFor(leg)}");
+                    Check(legTable.PropsFor(leg) == props[leg - 1], $"leg_props_{leg}_{legTable.PropsFor(leg)}");
+                    Check(legTable.MonstersFor(leg) == monsters[leg - 1], $"leg_monsters_{leg}_{legTable.MonstersFor(leg)}");
+                    Check(legTable.CursesFor(leg) == curses[leg - 1], $"leg_curses_{leg}_{legTable.CursesFor(leg)}");
+                    Check(legTable.SafetyFor(leg) >= 60f, $"leg_safety_{leg}_{legTable.SafetyFor(leg)}");
+                }
+            }
+
+            // 锚点可见性：按 legsMask 过滤后每关的件数与货值必须等于验收数字。
+            PropSpawnAnchor[] propAnchors = Object.FindObjectsByType<PropSpawnAnchor>(FindObjectsSortMode.None);
+            Check(propAnchors.Length == 16, $"prop_anchors_{propAnchors.Length}");
+
+            for (int leg = 1; leg <= 3; leg++)
+            {
+                int bit = 1 << (leg - 1);
+                int count = 0;
+                int totalValue = 0;
+
+                foreach (PropSpawnAnchor anchor in propAnchors)
+                {
+                    if ((anchor.legsMask & bit) == 0)
+                    {
+                        continue;
+                    }
+
+                    count++;
+                    GrabbableProp prop = FindSpawnProp(nm, anchor.profileId);
+                    totalValue += prop != null && prop.Profile != null ? prop.Profile.value : 0;
+                }
+
+                Check(count == LegAnchorCounts[leg - 1], $"leg_{leg}_anchors_{count}");
+                Check(totalValue == LegTotalValues[leg - 1], $"leg_{leg}_value_{totalValue}");
+            }
+
             if (failures == 0)
             {
-                Debug.Log($"[S4B] S4B_VALIDATE_OK vitals=1 revive=1 wipe=1 downedHud=1 shop6=1 tests=8 " +
+                Debug.Log($"[S4B] S4B_VALIDATE_OK vitals=1 revive=1 wipe=1 downedHud=1 shop6=1 tests=11 " +
                           $"monsters={monsterAnchors} monsterKinds=3 noiseHud=1 monsterPrefab=1 noiseState=1 " +
-                          $"curseAnchors={curseAnchors} curseKinds=2 curseHud=1");
+                          $"curseAnchors={curseAnchors} curseKinds=2 curseHud=1 " +
+                          $"legs=3 legAnchors=12/14/16 legValues=3155/4365/4785 belt=1 stamina=1");
             }
         }
 
@@ -271,6 +347,19 @@ namespace ScavengeNightmare.EditorTools
                 changed = true;
             }
 
+            // S4B-5：工具带（≤7kg 小件挂腰）与体能（连续冲刺上限）。
+            if (prefab.GetComponent<BeltSlot>() == null)
+            {
+                prefab.AddComponent<BeltSlot>();
+                changed = true;
+            }
+
+            if (prefab.GetComponent<PlayerStamina>() == null)
+            {
+                prefab.AddComponent<PlayerStamina>();
+                changed = true;
+            }
+
             if (!changed)
             {
                 return;
@@ -305,6 +394,9 @@ namespace ScavengeNightmare.EditorTools
             changed |= AddIfMissing<MonsterDirector>(nm.gameObject);
             changed |= AddIfMissing<CurseRuntime>(nm.gameObject);
             changed |= AddIfMissing<S4BCurseTest>(nm.gameObject);
+            changed |= AddIfMissing<S4BLegTest>(nm.gameObject);
+            changed |= AddIfMissing<S4BBeltTest>(nm.gameObject);
+            changed |= AddIfMissing<S4BPerfTest>(nm.gameObject);
 
             GameObject dollPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DollPrefabPath);
             GameObject tabletPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(TabletPrefabPath);
@@ -340,6 +432,8 @@ namespace ScavengeNightmare.EditorTools
 
             changed |= EnsureMonsterAnchors();
             changed |= EnsureCurseAnchors();
+            // 必须在 S4ASceneSetup.RebuildAnchors 之后：重建会把 legsMask 复位成默认 7。
+            changed |= EnsureLegMasks();
 
             foreach (GameObject prefab in new[] { monsterPrefab, greeterPrefab, screamPrefab, dollPrefab, tabletPrefab })
             {
@@ -426,6 +520,159 @@ namespace ScavengeNightmare.EditorTools
             }
 
             return changed;
+        }
+
+        // ==================== S4B-5 三关梯度 / 工具带 / 体能 ====================
+
+        /// <summary>
+        /// 三关内容表资源。缺资源时 <see cref="LegContentTable.Instance"/> 会退回内置值，
+        /// 但退回值不可调、也不算「表驱动」，所以装配时一定要把资产建出来。
+        /// </summary>
+        private static void EnsureLegContentTable()
+        {
+            S4ASceneSetup.EnsureFolder("Assets/_Game/Resources");
+
+            int[] quotas = { 1800, 2400, 2800 };
+            int[] props = { 12, 14, 16 };
+            int[] monsters = { 1, 3, 4 };
+            int[] curses = { 0, 1, 2 };
+            float[] safety = { 120f, 90f, 60f };
+
+            LegContentTable table = AssetDatabase.LoadAssetAtPath<LegContentTable>(LegTablePath);
+            if (table == null)
+            {
+                table = ScriptableObject.CreateInstance<LegContentTable>();
+                table.EditorConfigure(quotas, props, monsters, curses, safety);
+                AssetDatabase.CreateAsset(table, LegTablePath);
+                EditorUtility.SetDirty(table);
+                AssetDatabase.SaveAssets();
+                Debug.Log("[S4B] S4B_LEG_TABLE_CREATED path=" + LegTablePath);
+                return;
+            }
+
+            if (SameInts(table.EditorQuotas, quotas)
+                && SameInts(table.EditorProps, props)
+                && SameInts(table.EditorMonsters, monsters)
+                && SameInts(table.EditorCurses, curses)
+                && SameFloats(table.EditorSafety, safety))
+            {
+                return;
+            }
+
+            table.EditorConfigure(quotas, props, monsters, curses, safety);
+            EditorUtility.SetDirty(table);
+            AssetDatabase.SaveAssets();
+            Debug.Log("[S4B] S4B_LEG_TABLE_REPAIRED path=" + LegTablePath);
+        }
+
+        /// <summary>
+        /// 关卡可见性：L1 = 12 件（3155）/ L2 = 14 件（4365）/ L3 = 全 16 件（4785）。
+        /// cabinet 在 L1+L3、不在 L2；tv/tire/statue 只在 L2+L3；三个 can 中第三个只在 L3。
+        /// </summary>
+        private static bool EnsureLegMasks()
+        {
+            List<PropSpawnAnchor> anchors = new(
+                Object.FindObjectsByType<PropSpawnAnchor>(FindObjectsSortMode.None));
+
+            // RebuildAnchors 保留锚点名，按名字排序后「第几个 can」跨 Setup 运行稳定。
+            anchors.Sort((a, b) => string.CompareOrdinal(a.gameObject.name, b.gameObject.name));
+
+            bool changed = false;
+            int canIndex = 0;
+
+            foreach (PropSpawnAnchor anchor in anchors)
+            {
+                int mask;
+
+                if (anchor.profileId == "can")
+                {
+                    canIndex++;
+                    mask = canIndex == 3 ? ThirdCanLegMask : 7;
+                }
+                else
+                {
+                    mask = 7;
+
+                    foreach ((string profile, int value) in LegMaskRules)
+                    {
+                        if (anchor.profileId == profile)
+                        {
+                            mask = value;
+                            break;
+                        }
+                    }
+                }
+
+                if (anchor.legsMask != mask)
+                {
+                    anchor.legsMask = mask;
+                    EditorUtility.SetDirty(anchor);
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+
+        private static bool SameInts(int[] actual, int[] expected)
+        {
+            if (actual == null || actual.Length != expected.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < expected.Length; i++)
+            {
+                if (actual[i] != expected[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool SameFloats(float[] actual, float[] expected)
+        {
+            if (actual == null || actual.Length != expected.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < expected.Length; i++)
+            {
+                if (Mathf.Abs(actual[i] - expected[i]) > 0.001f)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>与 PropSpawner.FindPrefab 同口径：按物件档 id 在 spawnPrefabs 里找。</summary>
+        private static GrabbableProp FindSpawnProp(NetworkManager nm, string profileId)
+        {
+            if (nm == null || nm.spawnPrefabs == null || string.IsNullOrEmpty(profileId))
+            {
+                return null;
+            }
+
+            foreach (GameObject prefab in nm.spawnPrefabs)
+            {
+                if (prefab == null)
+                {
+                    continue;
+                }
+
+                GrabbableProp prop = prefab.GetComponent<GrabbableProp>();
+                if (prop != null && prop.Profile != null && prop.Profile.id == profileId)
+                {
+                    return prop;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>GameRoot 上加噪音真值桥：怪物 AI 与 HUD 必须读同一份数据。</summary>

@@ -1,0 +1,40 @@
+# Sprint 4B regression case list (survival chain + monsters + curses + S4B-5).
+#
+# Format:  <case>|<args>|<required success marker>|<note>
+#
+# expected is derived from the number of case rows in this file. Never hardcode
+# the count anywhere else: a deleted case must turn the run red.
+#
+# expected_min is a FLOOR: losing rows trips it, adding rows does not require
+# editing it. cmd's "for /f" silently drops a final line without a trailing
+# newline, so a lost CRLF would otherwise shrink expected= and still look green.
+#
+# expected_min: 14
+#
+# Ordering rule: s4bdownhost must be immediately followed by s4bdownclient.
+# That pair is ONE acceptance case that needs TWO processes running at once.
+#
+# ASCII only. cmd reads manifests in the OEM codepage; UTF-8 Chinese turns into
+# garbage that can contain command separators and silently drops cases.
+#
+# Markers below were read out of the built Assembly-CSharp.dll, not guessed.
+#
+# --- Sprint 4B-1/2/3 (10) ---
+
+s4bvitals|-s4bvitals|S4B_VITALS_OK|S4B-1 damage -> guard -> downed -> drop held -> 8s self-revive
+s4bdownhost|-s4bdownhost|S4B_DOWN_OK|S4B-1 teammate revive HOST half (detached, paired with next row)
+s4bdownclient|-s4bdownclient -address=127.0.0.1|S4B_DOWN_CLIENT_OK|S4B-1 teammate revive CLIENT half (drives the host row above)
+s4bwipe|-s4bwipe|S4B_WIPE_OK|S4B-1 full wipe -> run ends, balance unchanged, leg=1, Safehouse
+s4bnoise|-s4bnoise|S4B_NOISE_OK|S4B-2 noise 3 tiers monotonic, HUD source/level/dir
+s4bmon|-s4bmon|S4B_MON_OK|S4B-2 monster 7 states, chase speed, windup, lost, stun, knockback, stairs
+s4bgreeter|-s4bgreeter|S4B_GREETER_OK|S4B-3 greeter freeze/dash/refreeze/wall stun/damage/budget
+s4bscream|-s4bscream|S4B_SCREAM_OK|S4B-3 scream canister windup, noise gain, pre-empt, held prop
+s4bcurse|-s4bcurse|S4B_CURSE_OK|S4B-4 doll laugh 12-20s +8 noise, 510 / 780, 1.5s hold, dormant=1
+s4blegcurse|-s4blegcurse|S4B_CURSE_LEG_OK|S4B-4 curse spawn gradient L1=0 L2=1 L3=2
+
+# --- Sprint 4B-5 (4) ---
+
+s4bleg|-s4bleg|S4B_LEG_OK|S4B-5 three legs: quota 1800/2400/2800, props 12/14/16, monsters 1/3/4, curses 0/1/2
+s4bbelt|-s4bbelt|S4B_BELT_OK|S4B-5 belt holds <=7kg while hands hold 42kg, drops on downed; sprint >=35pct
+s4bperf|-s4bperf|S4B_PERF_OK|S4B-5 1 cart + 40 props + 4 monsters, fps>=60, client kbps<=600
+s4acart-a4-p0|-s4acart-a4 -p0props -leg=3|S4A_A4_OK|S4B-5 A4 rerun on p0leg L3 (all 16 props, 102kg, 30m)

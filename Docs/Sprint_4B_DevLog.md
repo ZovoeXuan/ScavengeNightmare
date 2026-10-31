@@ -13,11 +13,14 @@
 | S4B-1 生存链 | **完成**：HP / 单次伤害保护 / 倒地 / 掉手持物 / 自由自救 / 队友救援 / 团灭 |
 | S4B-2 噪音+空眼 | **完成**：本地听觉半径 4/10/16m、`GATE_MON_HEARD/CHASE` 可归因、七状态、追逐预算、推车击退、楼梯、脱困 |
 | S4B-3 导购+尖啸罐 | **完成**：注视冻结（25°/18m/LOS）、0.35s 前摇 + 0.8s 突进、撞墙僵直 1.5s、尖啸罐 1.5s 前摇 +45 噪音 / 12m 眩晕掉货、投掷提前引爆 +15 无掉落 |
-| 新增自动化 | 3 条（S4B-1）：`-s4bvitals`、`-s4bwipe`、`-s4bdownhost`+`-s4bdownclient`；3 条（S4B-2）：`-s4bnoise`、`-s4bmon`；2 条（S4B-3）：`-s4bgreeter`、`-s4bscream` |
-| 4A 回归 | **13/13 全绿**（`S4A_REGRESSION_OK passes=13 expected=13`） |
-| 商店 | 6/8 上架（新增自救针/急救包）；工具带/体能归 S4B-5 |
+| S4B-4 两件诅咒 | **完成**：笑面偶 / 无字牌位；归属 = 手持者 + 随车 loader；同人最多 1 种生效（后入手休眠）；未封印恒 60%（510 / 780）；1.5s 长按放下；每关 0/1/2 件 |
+| S4B-5 三关梯度 | **完成**：`LegContentTable` 12/14/16 锚点 + 配额 1800/2400/2800 读表、怪物 1/3/4、诅咒 0/1/2、`p0leg` 分流、每关重建固定顺序；工具带（≤7kg 第二槽）、体能（连续冲刺 ≥35%）、A4 在 P0 L3 复跑、ShopTerminal 夜路拒买（§13） |
+| 新增自动化 | 13 行（S4B-1/2/3/4）：`-s4bvitals`、`-s4bwipe`、`-s4bdownhost`+`-s4bdownclient`（算 1 项）、`-s4bnoise`、`-s4bmon`、`-s4bgreeter`、`-s4bscream`、`-s4bcurse`、`-s4blegcurse`；S4B-5：`-s4bleg`、`-s4bbelt`、`-s4bperf`；另加 1 行 A4 P0 复跑 |
+| 4A 回归 | **13/13 全绿**（`S4A_REGRESSION_OK passes=13 expected=13`，本轮基线复跑证据见 §13.5） |
+| 4B 回归 | **14/14 全绿**（`S4B_REGRESSION_OK passes=14 expected=14`，`expected` 由清单行数推导） |
+| 商店 | **6/8**：4A 4 件 + 自救针 / 急救包。工具带与体能以**系统默认能力**交付，**未做成商品**；`-s4bshop8` 未交付（↔ 计划 R5 的「8 件是 P0 门票」，记技术债，不许对外说 8 件齐） |
 | 已知阻塞项 | 无 |
-| 未覆盖 | 蝙蝠、诅咒（S4B-4）、三关梯度（S4B-5）、A10/A11 真人 |
+| 未覆盖 | A11 真人；A1/A2 真人 3 关；A10 只记录机器人时长；`-s4blegclient`（A2 双人冒烟）未交付；正式美术/音频；蝙蝠等其余怪 |
 
 ---
 
@@ -399,7 +402,10 @@ GATE_CURSE_LEG leg=1 want=0 / leg=2 1/1 / leg=3 2/2
 
 ---
 
-## 12. 遗留（S4B-4 之后）
+## 12. 遗留（S4B-4 之后，历史记录）
+
+> 本节是 S4B-4 收口时的待办快照，**已被 §13 关闭**。其中「配额 2632」是 4A 历史口径，
+> 现行为 `LegContentTable` 的 1800/2400/2800（`-s4aloop` 断言已改为 `QuotaFor(2)`）。
 
 - **S4B-5**：三关梯度锚点 12/14/16、配额 1800/2400/2800、工具带/体能、`-s4bshop8`、怪物美术替换、41 条回归收口。
   - 配额改动必须与断言同批：`LevelRouteService.legQuotas = { 2632, 2632, 2800 }` 与
@@ -407,3 +413,208 @@ GATE_CURSE_LEG leg=1 want=0 / leg=2 1/1 / leg=3 2/2
     单独改配额会让 `-s4aloop` 立即红，并作废刚拿到的 6 轮矩阵证据（需重建重跑）。
 - **TECHDEBT-4B-01**：道具生成缺运行时清单埋点（`D65_SPAWN_ITEM profile= at= anchor=`），用于坐实走廊类归因；需 `S4A_TEST_BUILD` 闸门。
 - **观察项**：`flashlight_no_stun` 1/18；`-s4bmon` 的 chase 子项已稳，整条用例不宣布“已稳定”。
+
+---
+
+## 13. S4B-5 证据（三关梯度 + 工具带/体能 + 回归收口）
+
+### 13.1 装配与静态校验（`S4BSceneSetup.Setup` → `Validate`）
+
+```
+[S4A] S4A_SETUP_OK scene=Night1 anchors=16 quotaTerminal=1 traits=0 shop=1 shopItems=6
+[S4B] S4B_NIGHT_COMPONENTS_SAVED
+[S4B] S4B_VALIDATE_OK vitals=1 revive=1 wipe=1 downedHud=1 shop6=1 tests=11 monsters=6 monsterKinds=3
+      noiseHud=1 monsterPrefab=1 noiseState=1 curseAnchors=2 curseKinds=2 curseHud=1
+      legs=3 legAnchors=12/14/16 legValues=3155/4365/4785 belt=1 stamina=1
+```
+
+`legs/legAnchors/legValues` 是新增的三关校验：锚点掩码 12/14/16 与货值 3155/4365/4785 必须对得上
+`LegContentTable`；这套数字与 `PropSpawner` 的 `GATE_LEVEL` 是同一来源，所以任一侧改错都会让比例越界。
+
+> **`shop6=1` 是如实值**：商店仍是 6 件（4A 4 件 + 自救针/急救包）。工具带与体能本 Story
+> 以系统默认能力交付，**没有做成商品**，`-s4bshop8` 未交付（§13.9 第 1 条）。
+
+### 13.2 `-s4bleg`（三关连跑，单 Host）
+
+```
+[S4B] GATE_PROPS_MODE mode=p0leg leg=1 anchors=12 totalValue=3155
+[S4B] GATE_LEVEL n=1 quota=1800 source=table anchors=12 totalValue=3155 ratio=57.1 filtered=4
+[S4B] S4B_MON_LEG leg=1 spawned=1 holloweye=1 greeter=0 scream=0 safety=120
+[S4B] GATE_CURSE_SPAWN leg=1 want=0 count=0 anchors=2
+[S4A] GATE_BUY_REJECT itemId=hotkey1 reason=wrong_scene balance=0 visit=0 dist=1.00 scene=Night1
+[S4B] S4B_LEG_DUP dupBlocked=1 newLines=1
+[S4B] S4B_LEG_FILL leg=1 progress=1800 quota=1800 balance=1800
+[S4B] S4B_LEG_PORTAL target=Safehouse actual=Safehouse seconds=1.3 ok=1
+[S4A] GATE_LEVEL_ADVANCE n=2 quota=2400 source=table before=1800 after=1800
+[S4B] S4B_LEG_PORTAL target=Night1 actual=Night1 seconds=1.3 ok=1
+[S4B] GATE_PROPS_MODE mode=p0leg leg=2 anchors=14 totalValue=4365
+[S4B] GATE_LEVEL n=2 quota=2400 source=table anchors=14 totalValue=4365 ratio=55.0 filtered=2
+[S4B] S4B_MON_LEG leg=2 spawned=3 holloweye=2 greeter=1 scream=0 safety=90
+[S4B] S4B_LEG_ADVANCE leg=2 balance=1800 progress=0
+[S4B] GATE_CURSE_SPAWN leg=2 want=1 count=1 anchors=2
+[S4B] S4B_SCENE_REBUILD order=clear_monsters>noise_reset>props>monsters>curses leg=2
+[S4A] GATE_BUY_REJECT itemId=hotkey1 reason=wrong_scene balance=1800 visit=0 dist=1.00 scene=Night1
+[S4B] S4B_LEG_DUP dupBlocked=3 newLines=2
+[S4B] S4B_LEG_FILL leg=2 progress=2400 quota=2400 balance=4200
+[S4A] GATE_LEVEL_ADVANCE n=3 quota=2800 source=table before=4200 after=4200
+[S4B] S4B_LEG_PORTAL target=Night1 actual=Night1 seconds=1.3 ok=1
+[S4B] GATE_PROPS_MODE mode=p0leg leg=3 anchors=16 totalValue=4785
+[S4B] GATE_LEVEL n=3 quota=2800 source=table anchors=16 totalValue=4785 ratio=58.5 filtered=0
+[S4B] S4B_MON_LEG leg=3 spawned=4 holloweye=2 greeter=1 scream=1 safety=60
+[S4B] S4B_LEG_ADVANCE leg=3 balance=4200 progress=0
+[S4B] GATE_CURSE_SPAWN leg=3 want=2 count=2 anchors=2
+[S4B] S4B_SCENE_REBUILD order=clear_monsters>noise_reset>props>monsters>curses leg=3
+[S4A] GATE_BUY_REJECT itemId=hotkey1 reason=wrong_scene balance=4200 visit=0 dist=1.00 scene=Night1
+[S4B] S4B_LEG_DUP dupBlocked=5 newLines=2
+[S4B] S4B_LEG_OK legs=3 ratios=57.1/55.0/58.5 balance=4200 dupBlocked=5 legProgress=0 ok=True
+```
+
+覆盖：三关配额全部 `source=table`（1800/2400/2800），货件 12/14/16 与总额 3155/4365/4785 逐字对表，
+比例 57.1/55.0/58.5 全在 50–60%；怪物 1/3/4（L3 含尖啸罐 `scream=1`，安全期 120/90/60 不短于 60）；
+诅咒 0/1/2；`GATE_PROPS_MODE` 三关都是 `p0leg`，无 `legacy4a`；余额 0→1800→4200 单调不减且每关 `progress=0`；
+公秤去重累计 5；Night1 里三关各拒买一次（`wrong_scene`）；换关回夜路 `seconds=1.3`（修复前是 20s 超时，§13.7 第 2 条）。
+
+### 13.3 `-s4bbelt`（工具带 + 体能，单 Host）
+
+```
+[S4B] GATE_PROPS_MODE mode=p0leg leg=1 anchors=12 totalValue=3155
+[S4B] S4B_MON_SPAWN_SKIP reason=test_controlled
+[S4B] S4B_CURSE_SPAWN_SKIP reason=test_controlled
+[S4B] S4B_STAMINA_DEPLETED seconds=7.50 pct=37.5
+[S4B] S4B_STAMINA_METRICS continuous=7.32 pct=36.6 normalized=0.00
+[S4B] S4B_STAMINA_OK continuous=7.32 pct=36.6
+[S4B] S4B_BELT_ADD netId=3 prop=can mass=2.0 slots=1 beltMass=2.0
+[S4B] S4B_STAMINA_RESUME normalized=0.50
+[S4B] S4B_BELT_METRICS held=42.0 beltMass=2.0 total=44.0 slots=1
+[S4B] GATE_DAMAGE target=3 amount=200 hpBefore=100 hpAfter=1 source=belt_test_first
+[S4B] GATE_DAMAGE target=3 amount=10 hpBefore=1 hpAfter=-9 source=belt_test_second
+[S4B] S4B_BELT_DROP netId=3 reason=downed dropped=1 beltMass=0.0
+[S4B] GATE_DOWN target=3 hp=1 source=belt_test_second
+[S4B] S4B_BELT_DOWNED dropped=1 beltMass=0.0
+[S4B] S4B_BELT_OK sprint=7.32 pct=36.6 held=42.0 beltMass=2.0 total=44.0 dropped=1 ok=True
+```
+
+覆盖：连续冲刺 7.32s / 20s = 36.6% ≥ 35%，且体力被真实消耗（`normalized=0.00`，`S4B_STAMINA_DEPLETED` 先于恢复）；
+手持 42kg 时把一个 2kg 罐子挂到第二槽（`slots=1`），负重变为 44kg（**挂在腰上仍计入**）；
+倒地（两刀：200→1，10→倒地）时自动掉落，`beltMass=0.0`。
+
+### 13.4 `-s4bperf`（L3 满配：1 车 + 40 物 + 4 怪）
+
+```
+[S4B] S4B_PERF_LOAD props=40 extra=28
+[S4B] S4B_PERF_METRICS fps=120.0 kbps=0.0 frames=1200 seconds=10.00 props=40 monsters=4
+[S4B] S4B_PERF_OK fps=120.0 kbps=0.0 props=40 monsters=4 ok=True
+```
+
+判据 `fps>=60` 与 `kbps<=600` 同时满足；`kbps=0.0` 是单进程 Host（没有远端接收方），
+带宽子项的真实证据来自 §11 的双进程观测，本用例只保证「满配时不掉帧」。
+
+### 13.5 A4 在 P0 第 3 关复跑（`-s4acart-a4 -p0props -leg=3`）
+
+```
+[S4B] GATE_PROPS_MODE mode=p0leg leg=3 anchors=16 totalValue=4785
+[S4A] GATE_CART count=1 mass=60.0 ids=safe at_x=-0.55 width=0.70
+[S4A] GATE_CART count=2 mass=102.0 ids=safe,statue at_x=0.04 width=0.40
+[S4A] S4A_A4_PUSH distance=30.02 seconds=14.3 kept=2/2 stalls=0 unsticks=0 maxStallMs=0
+[S4A] S4A_A4_OK distance=30.02 mass=102.0 kept=2 stalls=0 maxStallMs=0 ok=True
+```
+
+16 锚点全量生成（`p0leg`）后装 safe + statue = 102kg，推 30.02m，0 次卡死（判据 <1.5s），
+2/2 件不掉。这条是 4A 的 A4 用例在 4B 配置下的复跑，不是新夹具。
+
+### 13.6 一键回归（最终二进制，`S4B_REGRESSION_OK passes=14 expected=14`）
+
+```
+RUN_DIR=D:\drlj\game\Tools\..\Logs\s4_reg\周六022610-142458
+RUN_LOCK_OK path="D:\drlj\game\Tools\..\Logs\s4_reg\_runner.lock"
+CASES_CHECK_OK expected=14 floor=14
+STALE_CHECK_OK src=202610311423 bin=202610311424 literal=3 payload=5 level=2 sharedassets=2 resources=1
+  PASS  s4bvitals / s4bdownclient / s4bdownhost / s4bwipe / s4bnoise / s4bmon
+  PASS  s4bgreeter / s4bscream / s4bcurse / s4blegcurse / s4bleg
+  PASS  s4bbelt / s4bperf / s4acart-a4-p0
+S4_REGRESSION_BREAKDOWN s4a pass=1 fail=0 s4b pass=13 fail=0
+S4B_REGRESSION_OK passes=14 expected=14
+```
+
+`expected` 由 `regression_4b_cases.txt` 的行数推导（`floor=14` 防止清单被读坏后变假绿），
+`STALE_CHECK` 确认构建产物晚于全部源码（`src` 2026-10-31 14:23 → `bin` 14:24）。
+
+4A 基线在同一份二进制上另跑 `Tools/run_regression_4a.bat`：
+```
+S4A_REGRESSION_OK passes=13 expected=13
+```
+（`-s4aloop` 的配额断言已改为 `LegContentTable.QuotaFor(2)==2400`，不再硬编码 2632；
+`-s4a*` 进程在 `ShopTerminal` 里保留旧口径，13 条因此不受 Night1 拒买影响。）
+
+### 13.7 本轮修掉的三个真问题（都由用例逼出来）
+
+1. **`-s4afixedyaw` 把 `-s4bleg` 判成 4A 进程**
+   - 现象：首跑 48 项失败，`GATE_PROPS_MODE mode=legacy4a`、没有 `GATE_LEVEL`、商店 `wrong_scene` 拦截失效。
+   - 根因：`S4ACli.Is4ARun` 按 `-s4a` 前缀一刀切，而全局修饰开关 `-s4afixedyaw` 也以 `-s4a` 开头。
+   - 修法：新增 `ModifierFlags` 排除表（`-s4afixedyaw`），只有非修饰的 `-s4a*` 才算 4A 进程。
+   - 复跑：`mode=p0leg leg=1 anchors=12`，三关断言全绿。
+
+2. **换关重入后 `LevelRouteService.Instance` 被清空 → 第二关门 20 秒不开**
+   - 现象：`S4B_LEG_PORTAL target=Safehouse actual=Night1 seconds=20.0 ok=0`；日志同帧有
+     `Multiple NetworkManagers detected … duplicate will be destroyed`。
+   - 探针证据（临时 `S4B_LEG_PORTAL_PROBE`，已删）：`portals=1 nearest=1.30 hold=0.98 enabled=1 active=1
+     portalScene=Night1 playerScene=Night1 route=0 quotaReached=1`——门与长按都正常，只有 `route=0`。
+   - 根因：场景重入实例化了一份新 NM，副本上的 `Awake` 无条件 `Instance = this`，副本被 Mirror 销毁时
+     `OnDestroy` 把 `Instance` 清空；DDOL 的旧实例还活着但不再被引用。
+   - 修法：`Awake` 改为「仅当 `Instance == null` 时接管」，`OnDestroy` 仍只清自己的引用。
+   - 复跑：`S4B_LEG_PORTAL … seconds=1.3 ok=1`，`S4B_LEG_OK`。
+
+3. **两处日志格式瑕疵（不是行为 bug，但会把证据读错）**
+   - `S4B_STAMINA_OK pct=` 漏了 ×100（打出 `pct=0.4`，而真实是 36.6%）；`S4B_BELT_OK` 那行本来是对的。
+   - `S4B_LEG_OK ratios=` 用了 `"-"` 作为占位初值，拼出来是 `ratios=-57.1/55.0/58.5/`。
+   - 两处都只改字符串，不改判据；为避免「证据在不同二进制上」，改完后整套回归重新跑（§13.6）。
+
+### 13.8 A1–A12 覆盖表（4B 收口口径）
+
+| A | 指标 | 4B 覆盖 | 证据 |
+|---|---|---|---|
+| A1 单人 3 关 | 30–40 分钟、0 崩溃 | **自动化 3 关 ✅ / 真人 ❌** | `-s4bleg`（§13.2）；真人留 4C |
+| A2 双人 3 关 | 同上 | ❌（`-s4blegclient` 未交付；仅 S4B-1 有 1 次双人倒地救援冒烟） | `-s4bdownhost`+`-s4bdownclient` |
+| A3 徒手 ≥35kg | 每关至少 1 件 | ✅ 沿用 4A | `GATE_HEAVY_MANUAL`（4A 段） |
+| A4 满载 30m | 102kg、卡死 <1.5s | ✅ P0 第 3 关复跑 | `-s4acart-a4 -p0props -leg=3`（§13.5） |
+| A5 楼梯 ≤90s | 折叠→搬→展开 | ✅ 沿用 4A | `GATE_TIMER tag=stair_cycle`（4A 段） |
+| A6 公秤不重复 | `dupBlocked≥1` | ✅ 三关各 ≥1，累计 5 | `S4B_LEG_DUP` |
+| A7 两诅咒 | 各触发 ≥1、仅 1 生效、60% | ✅ | `-s4bcurse` / `-s4blegcurse` |
+| A8 资金不丢不复制 | 4 场景差额 = 0 | ✅ 4/4（团灭补齐） | `-s4bwipe` + 强杀/重连/正常 |
+| A9 噪音可归因 | 无来源调查 = 0 | ✅ | `-s4bnoise` + `GATE_MON_CHASE` |
+| A10 单关时长 | 8–12 分钟 | **只记录不判定**（机器人时长不是节奏证据） | `GATE_TIMER tag=leg_total` |
+| A11 真人体验 | ≥30 分钟、再走一关 ≥50% | ❌（4C） | 录像 + 访谈 |
+| A12 性能带宽 | ≥60fps、≤600kbps | ✅ L3 满配（1 车 + 40 物 + 4 怪） | `-s4bperf`（§13.4） |
+
+**结论口径（定稿）**：`4B 覆盖 A3/A4/A5/A6/A7/A8/A9/A12 全量；A1 自动化 3 关；A2 未覆盖；A10 只记录；A11 未覆盖`。
+不许把「自动化 3 关」写成 A1/A2 通过，也不许把 A10 的机器人时长当节奏证据。
+
+### 13.9 与计划的偏差 / 技术债（不许对外说成已完成）
+
+1. **商店 6/8，不是 8/8**：`tool_belt`（700）与 `stamina_training`（1200）**没有做成商品**；
+   工具带（`BeltSlot`）与体能（`PlayerStamina`）是**所有人默认可用**的系统能力。`-s4bshop8` 未交付。
+   影响：`P0_VerticalSlice.md` §2.5「8 件」门票未闭；购买→生效→可断言这条链对这两件不存在。
+2. **回归拆成两道门，不是单条 21 条**：`regression_4b_cases.txt` 14 行（13 行 4B + 1 行 A4 P0 复跑），
+   `regression_4a_cases.txt` 13 行；另维护并集 `regression_cases.txt` 27 行（`# expected_min: 27`）。
+   `expected` 全部由清单行数推导，没有任何一处硬编码。为什么拆：4A 段保留自己的 `S4A_REGRESSION_OK` 门，
+   两套 expected 混在一起时，删掉一条 4A 用例会被 4B 的 floor 掩盖。
+3. **`-s4blegclient` 未交付**：A2 的双人 3 关自动化仍是空白（只有 S4B-1 的 1 次双人救援冒烟）。
+4. **`-s4bleg` 落在新文件 `S4BLegTest.cs`，而不是并进 `S4BCurseTest.cs`**（计划 §S4B-4 的写法）。
+   按 flag 分工：`S4BCurseTest` 只听 `-s4bcurse` / `-s4blegcurse`，`S4BLegTest` 独占 `-s4bleg`，
+   同一进程只有一夹具调 `StartHost()`；「不新建第二个 StartHost 夹具」的实质约束满足。
+5. **怪物仍是占位胶囊**（程序化染色），正式美术/音频未接；三关共用 Night1 一张图（计划 R2 的裁决）。
+6. **BeltSlot 是完整第二槽**（≤7kg、质量计入负重、倒地掉落），**不是** R5 的降级版；没有做交互速度 ×1.25。
+
+### 13.10 新增 / 修改文件（S4B-5）
+
+| 类型 | 文件 |
+|---|---|
+| 新增（数据） | `Resources/LegContentTable.asset`、`Scripts/Economy/LegContentTable.cs` |
+| 新增（能力） | `Scripts/Gameplay/BeltSlot.cs`、`Scripts/Networking/PlayerStamina.cs` |
+| 新增（测试） | `Scripts/Networking/S4BLegTest.cs`、`Scripts/Networking/S4BBeltTest.cs`、`Scripts/Networking/S4BPerfTest.cs` |
+| 新增（工具） | `Tools/regression_4b_cases.txt`、`Tools/run_regression_4b.bat` |
+| 修改（流程） | `Economy/LevelRouteService.cs`（配额读表 + `Awake` 单例）、`Economy/S4ABootstrap.cs`（固定顺序重建）、`Economy/ShopTerminal.cs`（夜路拒买）、`Economy/TeamAccount.cs`、`Save/S4ACli.cs`（`Is4ARun` 修饰开关排除）、`Gameplay/PropSpawner.cs`（`p0leg` 分流 + `GATE_LEVEL`）、`Gameplay/PropSpawnAnchor.cs`（`legsMask`）、`Monsters/MonsterSpawner.cs`（三关生成 + 测试跳过）、`Networking/PlayerMotor.cs`、`Combat/PlayerVitals.cs`、`Combat/S4BInput.cs`（G 键）、`Gameplay/GrabController.cs`、`Networking/S4ALoopTest.cs`（配额读表）、`Editor/S4BSceneSetup.cs`（表/组件/校验） |
+| 修改（工具） | `Tools/regression_cases.txt`（并集 27 行）、`Tools/run_regression.bat`（`CASES`/`OKMARK` 可覆写） |
+| 资源 | `Scenes/Night1.unity`、`Scenes/Safehouse.unity`、`Prefabs/Player.prefab`（组件接线；按纪律单独提交） |
+
+

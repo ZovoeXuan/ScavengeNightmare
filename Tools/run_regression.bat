@@ -108,7 +108,12 @@ setlocal enabledelayedexpansion
 
 set "ROOT=%~dp0.."
 set "EXE=%ROOT%\Builds\Sprint4A\ScavengeNightmare.exe"
-set "CASES=%~dp0regression_cases.txt"
+rem CASES / OKMARK can be overridden by a thin wrapper (run_regression_4b.bat).
+rem The manifest path and the terminal marker are the only differences between
+rem the full gate and the sprint-4B gate; everything else (guards, pairs,
+rem stale-binary scan, accounting) must stay identical.
+if not defined CASES set "CASES=%~dp0regression_cases.txt"
+if not defined OKMARK set "OKMARK=S4_REGRESSION_OK"
 set "STAMP=%DATE:~0,4%%DATE:~5,2%%DATE:~8,2%-%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%"
 set "STAMP=%STAMP: =0%"
 set "BASE=%ROOT%\Logs\s4_reg\%STAMP%"
@@ -449,8 +454,8 @@ if %ACCOUNTED% NEQ %EXPECTED% (
 )
 
 if %FAIL% EQU 0 (
-  echo S4_REGRESSION_OK passes=%PASS% expected=%EXPECTED%
-  echo S4_REGRESSION_OK passes=%PASS% expected=%EXPECTED% >>"%BASE%\summary.txt"
+  echo !OKMARK! passes=%PASS% expected=%EXPECTED%
+  echo !OKMARK! passes=%PASS% expected=%EXPECTED% >>"%BASE%\summary.txt"
   call :release_lock
   endlocal
   exit /b 0

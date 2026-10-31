@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using Mirror;
+using ScavengeNightmare.Economy;
+using ScavengeNightmare.Save;
 using UnityEngine;
 
 namespace ScavengeNightmare.Gameplay
@@ -28,6 +30,23 @@ namespace ScavengeNightmare.Gameplay
         [SerializeField] private Entry[] entries;
 
         private bool spawned;
+
+        /// <summary>
+        /// 4B P0 口径：带 -p0props 的进程，或任何非 -s4a* 进程（正式游玩）都按关卡过滤锚点。
+        /// -s4a* 且不带 -p0props 必须保留 4A 的 legacy4a（全 16 件），否则 A4 需要的 statue+safe 不在场。
+        /// </summary>
+        public static bool IsP0LegMode => S4ACli.Has("-p0props") || !S4ACli.Is4ARun;
+
+        public static int ResolveLeg()
+        {
+            int cliLeg = S4ACli.IntValue("-leg=", 0);
+            if (cliLeg > 0)
+            {
+                return cliLeg;
+            }
+
+            return TeamAccount.Instance != null ? TeamAccount.Instance.LegIndex : 1;
+        }
 
         /// <summary>
         /// 换关重入：清掉「已生成」标记再跑一遍生成协程。
@@ -80,7 +99,9 @@ namespace ScavengeNightmare.Gameplay
             PropSpawnAnchor[] anchors = FindObjectsByType<PropSpawnAnchor>(FindObjectsSortMode.None);
             if (anchors.Length > 0)
             {
-                int byAnchor = SpawnFromAnchors(anchors);
+                bool p0 = IsP0LegMode;
+                int leg = p0 ? ResolveLeg() : 0;
+                int byAnchor = SpawnFromAnchors(anchors, p0, leg);
                 Debug.Log($"[D65] D65_SPAWNED count={byAnchor} source=anchors");
                 yield break;
             }
@@ -106,7 +127,7 @@ namespace ScavengeNightmare.Gameplay
         /// 按锚点生成：锚点只写物件档 id，具体 prefab 从 NetworkManager.spawnPrefabs 里按档匹配。
         /// 匹配不上时跳过并告警——静默不生成会让「图里明明摆了 18 个锚点却只刷出 12 件」很难查。
         /// </summary>
-        private static int SpawnFromAnchors(PropSpawnAnchor[] anchors)
+        private static int SpawnFromAnchors(PropSpawnAnchor[] anchors, bool p0Leg, int leg)
         {
             NetworkManager nm = NetworkManager.singleton;
             if (nm == null || nm.spawnPrefabs == null || nm.spawnPrefabs.Count == 0)
@@ -117,11 +138,21 @@ namespace ScavengeNightmare.Gameplay
 
             int count = 0;
             int missing = 0;
+            int totalValue = 0;
+            int filtered = 0;
+            int legBit = 1 << Mathf.Clamp(leg - 1, 0, 30);
 
             foreach (PropSpawnAnchor anchor in anchors)
             {
                 if (anchor == null)
                 {
+                    continue;
+                }
+
+                // p0leg：按 legsMask 过滤；legacy4a：全 16 件（4A 的 A4 需要 statue+safe）。
+                if (p0Leg && (anchor.legsMask & legBit) == 0)
+                {
+                    filtered++;
                     continue;
                 }
 
@@ -142,7 +173,7 @@ namespace ScavengeNightmare.Gameplay
                 // 装车判据随之抖动（A4 就被判过一次 deck_full）。只在 Night1 且显式传参时生效，
                 // Supermarket 等正式场景与真人游玩的随机朝向完全保留。
                 if (anchor.randomYaw
-                    && ScavengeNightmare.Save.S4ACli.Has("-s4afixedyaw")
+                    && S4ACli.Has("-s4afixedyaw")
                     && UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Night1")
                 {
                     rot = anchor.transform.rotation;
@@ -152,11 +183,31 @@ namespace ScavengeNightmare.Gameplay
                 instance.name = $"{anchor.profileId}_{count + 1}";
                 NetworkServer.Spawn(instance);
                 count++;
+
+                GrabbableProp prop = instance.GetComponent<GrabbableProp>();
+                if (prop != null)
+                {
+                    totalValue += prop.CurrentValue;
+                }
             }
 
             if (missing > 0)
             {
                 Debug.LogError($"[D12] D12_SPAWN_INCOMPLETE missing={missing} spawned={count} anchors={anchors.Length}");
+            }
+
+            string mode = p0Leg ? "p0leg" : "legacy4a";
+            Debug.Log($"[S4B] GATE_PROPS_MODE mode={mode} leg={leg} anchors={count} totalValue={totalValue}");
+
+            if (p0Leg)
+            {
+                int quota = TeamAccount.Instance != null
+                    ? TeamAccount.Instance.LegQuota
+                    : LegContentTable.Instance.QuotaFor(leg);
+                float ratio = totalValue > 0 ? quota * 100f / totalValue : 0f;
+
+                Debug.Log($"[S4B] GATE_LEVEL n={leg} quota={quota} source=table anchors={count} " +
+                          $"totalValue={totalValue} ratio={ratio:F1} filtered={filtered}");
             }
 
             return count;

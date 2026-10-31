@@ -59,6 +59,10 @@ namespace ScavengeNightmare.Networking
         private Traits.PlayerTraits traits;
         private Gameplay.GrabController grab;
 
+        /// <summary>S4B-5：体能。为空时（Main/Supermarket 基线）冲刺行为一行不变。</summary>
+        private Gameplay.BeltSlot belt;
+        private PlayerStamina stamina;
+
         /// <summary>上一帧读到的持有质量，用于判断是否需要重算负重系数（负数 = 尚未初始化）。</summary>
         private float lastSeenHeldMass = -1f;
 
@@ -117,6 +121,8 @@ namespace ScavengeNightmare.Networking
             controller = GetComponent<CharacterController>();
             traits = GetComponent<Traits.PlayerTraits>();
             grab = GetComponent<Gameplay.GrabController>();
+            belt = GetComponent<Gameplay.BeltSlot>();
+            stamina = GetComponent<PlayerStamina>();
 
             if (playerCamera == null)
             {
@@ -256,7 +262,9 @@ namespace ScavengeNightmare.Networking
                 return;
             }
 
-            float mass = grab.IsHolding ? grab.HeldMass : 0f;
+            // 4B-5：腰带上挂着的重量照常计入负重。挂上腰带只是「腾出手」，
+            // 不是「重量消失」——否则工具带会变成免费背包，负重减速整条轴失效。
+            float mass = (grab.IsHolding ? grab.HeldMass : 0f) + (belt != null ? belt.BeltMass : 0f);
             if (Mathf.Approximately(mass, lastSeenHeldMass))
             {
                 return;
@@ -296,8 +304,8 @@ namespace ScavengeNightmare.Networking
                 moveInput = automationMove;
                 lookInput = Vector2.zero;
                 jumpQueued = false;
-                // 自动化同样受「瘸子不能冲刺」约束，否则 D8 验证会测不到这条
-                sprintHeld = automationSprint && Loadout.CanSprint;
+                // 自动化同样受「瘸子不能冲刺」与「体能」约束，否则 D8/4B-5 验证会测不到
+                sprintHeld = automationSprint && SprintAllowed;
                 return;
             }
 
@@ -315,7 +323,7 @@ namespace ScavengeNightmare.Networking
             float y = (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f);
             moveInput = Vector2.ClampMagnitude(new Vector2(x, y), 1f);
 
-            sprintHeld = kb.leftShiftKey.isPressed && Loadout.CanSprint;
+            sprintHeld = kb.leftShiftKey.isPressed && SprintAllowed;
             jumpQueued = kb.spaceKey.wasPressedThisFrame;
 
             Mouse mouse = Mouse.current;
@@ -502,6 +510,18 @@ namespace ScavengeNightmare.Networking
         }
 
         public bool VitalsDowned => vitalsDowned;
+
+        /// <summary>
+        /// 4B-5：这一帧是否真的在冲刺（已被身份/体能闸门过滤后的结果）。
+        /// PlayerStamina 读它来扣体力；读「意图」而不是读速度——
+        /// 顶着墙推的时候速度为 0，但那也是在冲刺。
+        /// </summary>
+        public bool SprintInput => sprintHeld;
+
+        /// <summary>4B-5：负重总重（手持 + 腰带）。自动化断言读它来证明腰带重量没被吞掉。</summary>
+        public float CarryMassKg => carryMassKg;
+
+        private bool SprintAllowed => Loadout.CanSprint && (stamina == null || stamina.CanSprint);
 
         /// <summary>D8 交互距离倍率：近视眼看得近。</summary>
         public float InteractRangeScale => Loadout.InteractRangeScale;

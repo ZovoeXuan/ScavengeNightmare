@@ -108,21 +108,51 @@ namespace ScavengeNightmare.Save
         /// 是否是 4A 基线进程（只看 -s4a 前缀）。4B 的 P0 锚点口径要避开它：
         /// -s4a* 用例必须拿到完整 16 件货（A4 需要 statue + safe），
         /// 否则第 1 关只有 12 件、statue 不在场，A4 会当场失效。
+        ///
+        /// 注意 -s4afixedyaw 是**全局修饰开关**（所有用例批次都会传），不是 4A 用例本身。
+        /// 早先这里按前缀一刀切，导致 `-s4bleg -s4afixedyaw` 被判成 4A 进程：
+        /// GATE_PROPS_MODE 打成 legacy4a、三关梯度与商店 wrong_scene 拦截全部失效。
+        /// 凡是「和用例身份无关、只影响表现」的 -s4a* 修饰参数都登记在下面这张排除表里。
         /// </summary>
+        private static readonly string[] ModifierFlags =
+        {
+            "-s4afixedyaw"
+        };
+
         public static bool Is4ARun
         {
             get
             {
                 foreach (string a in Environment.GetCommandLineArgs())
                 {
-                    if (a != null && a.StartsWith("-s4a", StringComparison.OrdinalIgnoreCase))
+                    if (a == null || !a.StartsWith("-s4a", StringComparison.OrdinalIgnoreCase))
                     {
-                        return true;
+                        continue;
                     }
+
+                    if (IsModifierFlag(a))
+                    {
+                        continue;
+                    }
+
+                    return true;
                 }
 
                 return false;
             }
+        }
+
+        private static bool IsModifierFlag(string arg)
+        {
+            foreach (string flag in ModifierFlags)
+            {
+                if (string.Equals(arg, flag, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public static string SaveDirOverride;

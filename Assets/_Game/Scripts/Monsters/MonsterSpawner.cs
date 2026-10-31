@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using Mirror;
+using ScavengeNightmare.Economy;
 using ScavengeNightmare.Save;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -58,21 +59,92 @@ namespace ScavengeNightmare.Monsters
             }
 
             // 4A 基线进程不生成怪；两条 4B-2 用例自己精确控制生成位置。
-            if (S4ACli.Is4ARun || S4ACli.Any("-s4bnoise", "-s4bmon", "-s4bgreeter", "-s4bscream", "-s4bcurse", "-s4blegcurse"))
+            if (S4ACli.Is4ARun || S4ACli.Any("-s4bnoise", "-s4bmon", "-s4bgreeter", "-s4bscream",
+                    "-s4bcurse", "-s4blegcurse", "-s4bleg", "-s4bperf", "-s4bbelt"))
             {
                 Debug.Log("[S4B] S4B_MON_SPAWN_SKIP reason=test_controlled");
                 yield break;
             }
 
-            if (safetySeconds > 0f)
+            int leg = CurrentLeg();
+            float safety = LegContentTable.Instance.SafetyFor(leg);
+
+            if (safety > 0f)
             {
-                yield return new WaitForSeconds(safetySeconds);
+                yield return new WaitForSeconds(Mathf.Max(60f, safety));
             }
 
             if (SpawnCount == 0)
             {
-                ServerSpawnAtAnchor(0);
+                ServerSpawnForLeg(CurrentLeg());
             }
+        }
+
+        private static int CurrentLeg()
+        {
+            return TeamAccount.Instance != null ? TeamAccount.Instance.LegIndex : 1;
+        }
+
+        /// <summary>
+        /// S4B-5 三关梯度：L1 空眼×1 / L2 空眼×2+导购×1 / L3 空眼×2+导购×1+尖啸罐×1。
+        /// 每次先清旧怪再生成，换关不会累积（R3 的「第二关有两批怪」就是这么来的）。
+        /// </summary>
+        [Server]
+        public int ServerSpawnForLeg(int leg)
+        {
+            ServerDespawnAll();
+
+            int eyes = leg >= 2 ? 2 : 1;
+            int greeters = leg >= 2 ? 1 : 0;
+            int screams = leg >= 3 ? 1 : 0;
+
+            MonsterSpawnAnchor[] anchors = FindObjectsByType<MonsterSpawnAnchor>(FindObjectsSortMode.None);
+            if (anchors.Length == 0)
+            {
+                Debug.LogError("[S4B] S4B_MON_SPAWN_FAIL reason=no_anchor");
+                return 0;
+            }
+
+            int cursor = 0;
+
+            for (int i = 0; i < eyes; i++)
+            {
+                ServerSpawnHollowEye(AnchorFeet(anchors, cursor++));
+            }
+
+            for (int i = 0; i < greeters; i++)
+            {
+                ServerSpawnPlasticGreeter(AnchorFeet(anchors, cursor++));
+            }
+
+            for (int i = 0; i < screams; i++)
+            {
+                ServerSpawnScreamCan(AnchorFeet(anchors, cursor++));
+            }
+
+            Debug.Log($"[S4B] S4B_MON_LEG leg={leg} spawned={SpawnCount} holloweye={eyes} " +
+                      $"greeter={greeters} scream={screams} safety={LegContentTable.Instance.SafetyFor(leg):F0}");
+            return SpawnCount;
+        }
+
+        private static Vector3 AnchorFeet(MonsterSpawnAnchor[] anchors, int index)
+        {
+            MonsterSpawnAnchor anchor = anchors[index % anchors.Length];
+            return anchor.transform.position + Vector3.up * 0.05f;
+        }
+
+        /// <summary>换关重入：由 <see cref="S4ABootstrap"/> 在货生成之后调用，顺序见 R3。</summary>
+        [Server]
+        public void RespawnForNewLeg()
+        {
+            if (!NetworkServer.active)
+            {
+                return;
+            }
+
+            int leg = CurrentLeg();
+            int count = ServerSpawnForLeg(leg);
+            Debug.Log($"[S4B] S4B_MON_RESPAWN leg={leg} count={count}");
         }
 
         [Server]

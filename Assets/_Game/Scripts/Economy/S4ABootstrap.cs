@@ -1,7 +1,12 @@
+using System.Collections;
 using Mirror;
-using ScavengeNightmare.Save;
+using ScavengeNightmare.Curses;
 using ScavengeNightmare.Gameplay;
+using ScavengeNightmare.Monsters;
+using ScavengeNightmare.Noise;
+using ScavengeNightmare.Save;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace ScavengeNightmare.Economy
 {
@@ -110,19 +115,73 @@ namespace ScavengeNightmare.Economy
         {
             // 安全屋不是夜路：不该有推车、也不该有可拾荒物。
             // 早先这里无条件 SpawnCart + RespawnForNewScene，导致进店后场上多出一辆车和 11 件货。
-            if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Safehouse")
+            if (SceneManager.GetActiveScene().name == "Safehouse")
             {
                 Debug.Log("[S4A] S4A_SCENE_OBJECTS_SKIP reason=safehouse");
                 return;
             }
 
             SpawnCart();
+            StartCoroutine(RebuildAfterSceneChange());
+        }
+
+        /// <summary>
+        /// S4B-5：换关重建顺序写死为
+        /// 「清旧怪 → NoiseBus.Reset → 货 → 怪 → 诅咒」。
+        ///
+        /// 为什么顺序必须固定：
+        /// 1) 先清怪：旧怪还活着时会立刻消费刚刷出来的噪音，下一关一进门就被追。
+        /// 2) 再清噪音：NoiseBus 的内存峰值不会被上一关的「提交成功」带进来。
+        /// 3) 货先于怪：怪物锚点与巡逻点按场上物件做初始感知，货不在场时会生成在空图里。
+        /// 4) 诅咒最后：诅咒的归属与车/人绑定，必须等车与货都在场。
+        ///
+        /// p0leg 之外的进程（4A 基线）只补车与货，不碰怪/诅咒——
+        /// 4A 的 13 条用例从来没生成过这两样，动它们等于改基线。
+        /// </summary>
+        private IEnumerator RebuildAfterSceneChange()
+        {
+            bool p0 = PropSpawner.IsP0LegMode;
+            MonsterSpawner monsters = GetComponent<MonsterSpawner>();
+            CurseRuntime curses = GetComponent<CurseRuntime>();
+
+            if (p0 && monsters != null)
+            {
+                monsters.ServerDespawnAll();
+            }
+
+            if (p0)
+            {
+                NoiseBus.Reset();
+            }
 
             PropSpawner spawner = GetComponent<PropSpawner>();
             if (spawner != null)
             {
                 spawner.RespawnForNewScene();
             }
+
+            if (!p0)
+            {
+                yield break;
+            }
+
+            // PropSpawner 的协程里有 0.2s 的「等 NM 稳定」，这里让位给它。
+            yield return new WaitForSeconds(0.8f);
+
+            if (monsters != null)
+            {
+                monsters.RespawnForNewLeg();
+            }
+
+            yield return new WaitForSeconds(0.25f);
+
+            if (curses != null)
+            {
+                curses.RespawnForNewLeg();
+            }
+
+            int leg = TeamAccount.Instance != null ? TeamAccount.Instance.LegIndex : 1;
+            Debug.Log($"[S4B] S4B_SCENE_REBUILD order=clear_monsters>noise_reset>props>monsters>curses leg={leg}");
         }
 
         /// <summary>

@@ -22,9 +22,6 @@ namespace ScavengeNightmare.Economy
         [SerializeField] private string nightScene = "Night1";
         [SerializeField] private string safehouseScene = "Safehouse";
 
-        [Tooltip("各关过关额（下标 = 关卡序号 - 1）。超出长度时取最后一个，不越界。")]
-        [SerializeField] private int[] legQuotas = { 2632, 2632, 2800 };
-
         private string lastScene = string.Empty;
 
         public bool InSafehouse => SceneManager.GetActiveScene().name == safehouseScene;
@@ -33,20 +30,33 @@ namespace ScavengeNightmare.Economy
 
         public string SafehouseSceneName => safehouseScene;
 
+        /// <summary>
+        /// 过关额统一读 <see cref="LegContentTable"/>（1800/2400/2800）。
+        /// 不再保留 Inspector 数组：表改了而场景里的旧序列化值没改，会变成
+        /// 「门要 2400、货按 1800 的 57% 刷」这种只在某一关才出现的错位。
+        /// </summary>
         public int QuotaFor(int legIndex)
         {
-            if (legQuotas == null || legQuotas.Length == 0)
-            {
-                return 1800;
-            }
-
-            int index = Mathf.Clamp(legIndex - 1, 0, legQuotas.Length - 1);
-            return legQuotas[index];
+            return LegContentTable.Instance.QuotaFor(legIndex);
         }
 
         private void Awake()
         {
-            Instance = this;
+            // 本组件挂在 NetworkManager 物体上，而 Night1 与 Safehouse 的换关是
+            // 「重入同一个场景」。重入 Night1 时 Mirror 会实例化一份新的 NM（自带一份本组件），
+            // Awake 跑完后立刻以「Multiple NetworkManagers detected」销毁这份重复对象。
+            //
+            // 旧写法无条件 Instance = this：新副本先抢走静态引用，随后被销毁时又把 Instance 清空，
+            // 而 old 那份（DontDestroyOnLoad）一直活着却没人再把引用还回来。
+            // 表现就是「第二关回到夜路后 Instance == null」——门的长按走到 route == null 后静默
+            // return，玩家按满 20 秒也不换关（S4BLEG 实测就是这么挂的）。
+            //
+            // 只认第一个有效实例：Unity 的 == 对已销毁对象也返回 true，所以旧实例被销毁时
+            // 这里仍能重新接管；而重复副本本身不会抢走引用，它的销毁也就不会把引用清空。
+            if (Instance == null)
+            {
+                Instance = this;
+            }
         }
 
         private void OnDestroy()

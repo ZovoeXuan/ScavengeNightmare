@@ -299,6 +299,13 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
+            // 4B-5：已经被腰带挂住的货不能被再抓到手上（SetHeld(true) 但没有 GrabController holder）。
+            // 只拦真人抓取路径，ServerForceGrab 是测试钩子，保持原样。
+            if (prop.IsHeld)
+            {
+                return;
+            }
+
             if (vitals != null && vitals.IsDowned)
             {
                 Debug.Log($"[S4B] S4A_GRAB_REJECT reason=downed netId={netId}");

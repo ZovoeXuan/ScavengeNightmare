@@ -156,7 +156,9 @@ namespace ScavengeNightmare.Networking
 
             bool legAdvanced = account.LegIndex == 2;
             bool progressReset = account.LegProgress == 0;
-            bool quotaFromTable = account.LegQuota == 2632;
+            // 配额口径改为读表（4B 1800/2400/2800）。断言只依赖表本身，不再硬编码 2632：
+            // 表改了断言跟着改，比「改表后忘记改测试」安全得多。
+            bool quotaFromTable = account.LegQuota == ScavengeNightmare.Economy.LegContentTable.Instance.QuotaFor(2);
             bool walletSurvived = account.Balance == balanceBefore;
 
             // 换关必须把推车与货重新刷出来——早先这里什么都不做，第二天进关是空场

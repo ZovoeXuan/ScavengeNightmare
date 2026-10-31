@@ -18,6 +18,9 @@ namespace ScavengeNightmare.Gameplay
         [Tooltip("生成后是否随机水平朝向，避免一排货全是同一个角度")]
         public bool randomYaw = true;
 
+        [Tooltip("S4B-5 在哪些关出现：bit0=L1 / bit1=L2 / bit2=L3，默认 7（三关都出现）")]
+        public int legsMask = 7;
+
         private void OnDrawGizmos()
         {
             Gizmos.color = new Color(0.95f, 0.8f, 0.3f, 0.9f);

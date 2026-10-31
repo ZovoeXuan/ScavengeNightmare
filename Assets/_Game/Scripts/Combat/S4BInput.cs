@@ -19,9 +19,32 @@ namespace ScavengeNightmare.Combat
         /// <summary>自动化：置 true 后由 PlayerVitals 消费并复位。</summary>
         public static bool AutoMedkit;
 
+        /// <summary>S4B-5：G = 挂工具带。自动化置 true 后由 BeltSlot 消费并复位。</summary>
+        public static bool AutoBelt;
+
         public static bool SelfInjectPressed => AutoSelfInject || ManualSelfInject;
 
         public static bool MedkitPressed => AutoMedkit || ManualMedkit;
+
+        public static bool BeltPressed => AutoBelt || ManualBelt;
+
+        private static bool ManualBelt
+        {
+            get
+            {
+                if (S4AInput.SuppressManual)
+                {
+                    return false;
+                }
+
+#if ENABLE_INPUT_SYSTEM
+                Keyboard keyboard = Keyboard.current;
+                return keyboard != null && keyboard.gKey.wasPressedThisFrame;
+#else
+                return Input.GetKeyDown(KeyCode.G);
+#endif
+            }
+        }
 
         private static bool ManualSelfInject
         {

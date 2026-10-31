@@ -12,10 +12,11 @@
 # editing it, but losing rows does trip it. It exists because cmd's "for /f"
 # silently drops a final line that has no trailing newline - a lost CRLF makes
 # the last case vanish, and without a floor the run still prints a clean
-# "OK passes=22 expected=22". If you ADD cases, leave this alone; if you
-# deliberately REMOVE cases, lower it in the same commit.
+# "OK passes=22 expected=22". Adding cases may raise it in the same commit
+# (S4B-5 raised it 23 -> 27); deliberately REMOVING cases must lower it in
+# the same commit.
 #
-# expected_min: 23
+# expected_min: 27
 #
 # Ordering rule: s4bdownhost must be immediately followed by s4bdownclient.
 # That pair is ONE acceptance case that needs TWO processes running at once
@@ -38,7 +39,7 @@ s4acarrycap|-s4acarrycap|S4A_CARRY_CAP_OK|Story4 carry hard cap + grip training 
 s4aloop|-s4aloop|S4A_LOOP_OK|Story4 level loop Night1 -> Safehouse -> Night1
 s4aloop-asyncbreak|-s4aloop -s4asyncbreak|S4A_LOOP_OK|Story4 wallet sync probe self-check (match must be False)
 
-# --- Sprint 4B (8) ---
+# --- Sprint 4B-1/2/3 (10) ---
 # Markers below were read out of the built Assembly-CSharp.dll, not guessed.
 #   -s4bvitals     -> S4B_VITALS_OK        (S4B-1 survival chain, single host)
 #   -s4bdownhost   -> S4B_DOWN_OK          (S4B-1 revive, host half of the pair)
@@ -60,9 +61,14 @@ s4bscream|-s4bscream|S4B_SCREAM_OK|S4B-3 scream canister windup, noise gain, pre
 #   -s4bcurse     -> S4B_CURSE_OK        (S4B-4 two curses: laugh / 60pct price / 1.5s hold / dormant)
 #   -s4blegcurse  -> S4B_CURSE_LEG_OK    (S4B-4 curse spawn gradient L1/L2/L3 = 0/1/2)
 #
-# NOTE: -s4bleg (no suffix) is RESERVED for S4B-5 (quota / anchor / monster gradient).
-#       Never aim two fixtures at the same flag: both would call StartHost() in one
-#       process. See Docs/Sprint_4B_TechnicalPlan.md, Story S4B-4.
-
 s4bcurse|-s4bcurse|S4B_CURSE_OK|S4B-4 doll laugh 12-20s +8 noise attributed, 510 / 780, 1.5s hold, dormant=1
 s4blegcurse|-s4blegcurse|S4B_CURSE_LEG_OK|S4B-4 curse spawn gradient L1=0 L2=1 L3=2
+
+# --- Sprint 4B-5 (4) ---
+# Never aim two fixtures at the same flag: both would call StartHost() in one
+# process. -s4bleg / -s4betc are distinct from -s4blegcurse on purpose.
+
+s4bleg|-s4bleg|S4B_LEG_OK|S4B-5 three legs: quota 1800/2400/2800, props 12/14/16, monsters 1/3/4, curses 0/1/2
+s4bbelt|-s4bbelt|S4B_BELT_OK|S4B-5 belt holds <=7kg while hands hold 42kg, drops on downed; sprint >=35pct
+s4bperf|-s4bperf|S4B_PERF_OK|S4B-5 1 cart + 40 props + 4 monsters, fps>=60, client kbps<=600
+s4acart-a4-p0|-s4acart-a4 -p0props -leg=3|S4A_A4_OK|S4B-5 A4 rerun on p0leg L3 (all 16 props, 102kg, 30m)
