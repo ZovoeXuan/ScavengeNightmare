@@ -320,3 +320,87 @@ Client: S4B_DOWN_CLIENT_READY netId=21
 - **S4B-4**：笑面偶 / 无字牌位、60% 计价、休眠。
 - **S4B-5**：12/14/16 锚点、1800/2400/2800 配额、工具带/体能、`-s4bshop8`、21 条回归、怪物美术替换。
 - **已知限制**：追逐速度按「最好窗口」判定（货架走廊避障会周期性吃掉速度）；楼梯判据取 2.9m（skinWidth 0.08 + 台阶落点）；怪物只在 Night1 装配，Safehouse 不生成。
+
+---
+
+## 10. S4B-4 证据（两件诅咒）
+
+**交付**：`CursedItem` / `CurseRuntime` / `CurseHud` / `CurseInput` / `CurseSpawnAnchor`；
+两个 `PropPhysicsProfile`（笑面偶 2kg/850、无字牌位 15kg/1300）；两个 prefab；`S4BSceneSetup` 幂等装配与校验。
+
+**归属口径**（设计未指定、由实现反推后写死）：
+- 手持 + 随车；随车归属 = **把它装上车的人**（`CartController.TryLoadFrom` 记 loader netId）
+- 卸下/掉落/提交即解除；归属人离线或倒地时保持休眠，不转移
+- 同一玩家两种生效时：**先入手的生效、后入手的休眠**（已写入技术计划 §4.4）
+
+**验收**（`-s4bcurse` / `-s4blegcurse`，全量 23/23 中包含）：
+```
+S4B_CURSE_OWNER prop=curse_tablet owner=3 source=cart
+S4B_CURSE_DUAL carried=2 active=curse_tablet dormant=curse_doll
+S4B_CURSE_VALUE id=curse_doll listed=850 current=510
+S4B_CURSE_VALUE id=curse_tablet listed=1300 current=780
+GATE_CURSE_HOLD_REJECT need=1.5 actual=0.80
+GATE_CURSE_HOLD_OK need=1.5 actual=1.52
+GATE_CURSE_LEG leg=1 want=0 / leg=2 1/1 / leg=3 2/2
+```
+
+---
+
+## 11. 4B 门禁加固与 6 轮矩阵（2026-10-31）
+
+### 11.1 门禁加固（`d119acc` + `a96d09c`）
+
+| 项 | 内容 |
+|---|---|
+| 预扫 + 硬地板 | `# expected_min: 23`；缺失/为 0/行数不足 → exit 2；解决“清单被读坏 → `OK passes=0 expected=0`”的假绿 |
+| 包龄守卫 | BINKEY = exe + dll + globalgamemanagers + 通配 `level* / sharedassets*.assets / resources*.assets`；三档地板（literal<3 / payload<3 / level<1）→ exit 2；`STALE_CHECK` 带计数 |
+| 扫描根 | `Assets` → `Assets\_Game`，排除 `Assets\Settings` 的 URP 设置；扩展名六类不变（不删 `*.asset`，否则把假红换成假绿） |
+| 单实例互斥 | 检测游戏进程与另一 runner → 打印对方 pid/start/cmd → `already_running` exit 2 |
+| 端口熔断 | 日志出现 `SocketException` → 立即中止整轮，`port_busy_by_previous_case` exit 2，避免一次故障放大成 N 条假红 |
+| 证据落盘 | `RUN_LOCK_OK` / `CASES_CHECK_OK` / `STALE_CHECK_OK` / 中止原因全部写进 `summary.txt` |
+| 退出码 | 0 绿 / 1 用例红 / 2 守卫拦下（先重建）/ 4 运行时异常 |
+
+### 11.2 六轮结果（同一二进制、同一装配状态、中途零改动）
+
+| 轮 | `-s4bmon` chase | endpoint | displaced | 整轮 |
+|---|---|---|---|---|
+| 1 | 3.20 | (-15.1,-1.6) | no (0.10m) | 23/23 |
+| 2 | 3.20 | (-15.1,-1.6) | no (0.10m) | 23/23 |
+| 3 | 3.20 | (-15.1,-1.5) | no (0.20m) | 23/23 |
+| 4 | 3.20 | (-15.1,-1.6) | no (0.10m) | 23/23 |
+| 5 | 3.20 | (-15.1,-1.6) | no (0.10m) | 23/23 |
+| 6 | 3.20 | (-15.1,-1.6) | no (0.10m) | 23/23 |
+
+- 整轮：6/6 `passes=23 expected=23`（138 条判定，0 红）
+- `-s4bmon`：6/6 PASS，chase 全为 profile 值 3.20（非勉强过线），6/6 `displaced=no`
+- `STALE_CHECK` 六轮逐字一致：`src=202610311017 bin=202610311018 literal=3 payload=5 level=2 sharedassets=2 resources=1`
+
+**结论（定稿措辞）**：
+> `-s4bmon` 的 **chase 子项**：修复后 12 次采样（单跑）+ 6 轮矩阵全部 3.20（修前 3 次红在 2.98–3.02），终点稳定 `(-15.1,-1.5~-1.6)`，displaced=no；走廊几何修复对该子项有效，此前「门禁对这一条不可信」中**仅 chase 子项**的表述撤销。
+> 同一用例的 **flashlight_no_stun 子项**：合并 1/18 红，测试点 `(0,8)/(0,16)`，与走廊无关，**观察项**，归 S4B-2 判据范围，不撤、不派单。
+
+### 11.3 事故与更正（必须留档）
+
+1. **并发 runner 互杀**：同一时段存在 4 个 runner（curse 两轮、regression 一轮、主理人一轮），两个 runner 都按镜像名 `taskkill`，互相杀对方用例 → 22 条 `SocketException` 假红。已由单实例互斥从机制上禁止。
+2. **管道截断杀 cmd 留 exe**：`... | head -4` 关闭管道后 cmd 被杀、`ScavengeNightmare.exe` 变僵尸占 7777，后续用例全部启动失败。纪律：跑批输出只重定向到文件，不接 head/tail。
+3. **跑批期间改 bat**：cmd 按字节偏移逐行读批处理，改文件导致“边跑边换引擎”，输出出现 `'b' 不是内部或外部命令` 并从头上重跑。纪律：跑批期间禁止改 bat/清单。
+4. **主理人误杀**：10:26:27 的合法跑批（PID 33104/44300）被当作残留 `taskkill`，该轮作废；后续以进程探测 + 互斥代替人工判断。
+5. **对象名错、数字对**：走廊让位的主角是 `Anchor_4A_16_safe`，不是 `tv`（tv 一直在 `(-8,1.5,7.5)`）。错名记录比不记录更坏——后来人按 tv 查会发现它没变。
+6. **“根因”降级为“假设”**：失败日志无任何一行能指认障碍物，`safe + Crate_2 夹住走廊` 只是假设；`S4B_MON_WALL unstick=4` 不指认障碍物。
+7. **RebuildAnchors 非确定性**：原实现只收集坐标、按 `AnchorProfiles[i]` 重配，跑一次 Setup 会打乱 profile↔坐标配对，走廊悄悄变窄。改为采集「名字+坐标+profileId」三元组原位重建；`before/after1/after2` 三表逐字相同。
+8. **守卫自检漏洞**：`already_running` 把自己（执行 bat 的 cmd）当成并发 runner，门禁一条都跑不了。教训：验证守卫必须同时验证「该拦的拦得住」与「不该拦的放得过」。
+9. **BINKEY 扩展是预防性加固**：本次构建 `Assembly-CSharp.dll` 未变但 `globalgamemanagers` 变了，旧三文件集合也能判对；payload 扩展针对“只改资产且 globalgamemanagers 不变”的情形，未被本次实证。
+
+### 11.4 残余风险
+
+1. 6 轮只覆盖**这一份二进制 + 这一个场景装配状态**；任何一次 `S4BSceneSetup.Setup()` 若改变 profile 表或锚点数量，证据作废、需重测。
+2. `flashlight_no_stun` 1/18 未归因，需要同一二进制上更高频重复才能区分夹具时序与真 bug。
+3. 门禁三种退出码需在 CI 中分支处理（0 绿 / 1 红 / 2 先重建 / 4 运行时异常）。
+
+---
+
+## 12. 遗留（S4B-4 之后）
+
+- **S4B-5**：三关梯度锚点 12/14/16、配额 1800/2400/2800、工具带/体能、`-s4bshop8`、怪物美术替换、41 条回归收口。
+- **TECHDEBT-4B-01**：道具生成缺运行时清单埋点（`D65_SPAWN_ITEM profile= at= anchor=`），用于坐实走廊类归因；需 `S4A_TEST_BUILD` 闸门。
+- **观察项**：`flashlight_no_stun` 1/18；`-s4bmon` 的 chase 子项已稳，整条用例不宣布“已稳定”。
