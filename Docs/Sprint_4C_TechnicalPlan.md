@@ -137,24 +137,34 @@ S4A_SHOP_REJECT scene=Night1 reason=wrong_scene（负向注入仍然要有）
 
 | 文件 | 改动 |
 |---|---|
-| `Audio/AudioBus.cs`（新） | 单例 + 8 个 `AudioSource` 池，`Play(AudioCue, position)`；无音频资源时用程序合成兜底 |
-| `Audio/AudioCue.cs`（新） | 四类 cue 枚举：`CartWheel`、`HeavyDrop`、`GlassBreak`、`CurseOmen`；频率/时长/波形/音量全在资源上 |
-| `Gameplay/CartController.cs` | 推车速度 > 1.5m/s 时按轮速播放 `CartWheel`（音高随速度，0.8–1.2） |
-| `Gameplay/GrabController.cs` / 货件落地 | 质量 ≥ 30kg 落地播 `HeavyDrop` |
-| 玻璃/易碎破损路径 | `GlassBreak` |
-| `Combat`/诅咒组件 | 发笑前 1.5s 播 `CurseOmen` |
+| `Audio/AudioCue.cs`（新） | 四类 cue 枚举：`CartWheel` / `HeavyDrop` / `GlassBreak` / `CurseOmen`，外加 `AudioCueInfo`（`Key` / `BaseFrequency` / `Seconds` / `Wave` / `Gain` + 指纹）。占位音是**程序合成的参数表**，不是资源 |
+| `Audio/AudioBus.cs`（新） | 静态 `Play(cue, position, pitch, extra)`：每 cue **0.15s 独立冷却**、按 `pitch` 缓存 clip、`AudioSource.PlayClipAtPoint` 播一次；合成按波形分流（sine / thump=方波+正弦 / noise=固定种子 / sweep=下滑到 0.62 倍） |
+| `Cart/CartController.cs` | `EmitNoise` 中平面速度 ≥ 1.5m/s 播 `CartWheel`，音高 `0.8 + clamp01((speed-1.5)/1.5)*0.4` |
+| `Gameplay/GrabbableProp.cs` | `OnCollisionEnter` 判 `mass >= 30 && relativeVelocity >= 1.5`；有 `NetworkedProp` 走 `HeavyDropAuthoritative` → `[ClientRpc] RpcHeavyDrop` 四端播，没有则本地播 |
+| `Gameplay/NetworkedProp.cs` | 新增 `HeavyDropAuthoritative(float mass)`（`isServer` 守卫）+ `RpcHeavyDrop(float mass, Vector3 at)` |
+| `Gameplay/FragileProp.cs` | `ApplyBreak` 在 `SpawnFragments()` 后播 `GlassBreak`（`speed=impactSpeed`） |
+| `Curses/CurseRuntime.cs` | `TickLaughs` 前兆起点（`LaughWindup` 计时开始那条）播 `CurseOmen`（`lead=LaughWindup`） |
+| `Networking/S4CAudioTest.cs`（新，`-s4baudio`） | 真实钩子驱动的四步夹具；`-s4caudioflat` 为 C5 注入口（把四个 cue 都压成 `cart_wheel` 指纹） |
+
+> 与最初计划的差异：**没有 8 个 `AudioSource` 池**（`PlayClipAtPoint` 每次自建一个短命 `AudioSource`，四类占位音足够）；**重物落地是服务端判定后广播**，不是本地直接播——客户端 `NetworkedProp.OnStartClient()` 把 Rigidbody 设 kinematic，客户端根本收不到碰撞，本地播会漏。
 
 **判据（`S4C_AUDIO_OK`）**
 
+每行 `S4C_AUDIO_PLAY` 统一带 `cue= / pitch= / freq= / dur= / wave=` 与业务上下文：
+
 ```
-S4C_AUDIO_PLAY cue=cart_wheel speed=2.4 pitch=1.05
-S4C_AUDIO_PLAY cue=heavy_drop mass=42.0
-S4C_AUDIO_PLAY cue=glass_break
-S4C_AUDIO_PLAY cue=curse_omen lead=1.5
-S4C_AUDIO_OK cues=4 distinguishable=4 failures=0 ok=True
+[S4C] S4C_AUDIO_PLAY cue=cart_wheel  pitch=0.91 freq=180 dur=0.18 wave=sine  speed=1.9
+[S4C] S4C_AUDIO_PLAY cue=heavy_drop  pitch=1.00 freq=90  dur=0.22 wave=thump mass=60.0
+[S4C] S4C_AUDIO_PLAY cue=glass_break pitch=1.00 freq=900 dur=0.30 wave=noise speed=6.2
+[S4C] S4C_AUDIO_PLAY cue=curse_omen  pitch=1.00 freq=320 dur=0.50 wave=sweep lead=1.5
+[S4C] S4C_AUDIO_METRICS cues=4 distinguishable=4 heavyMass=60.0 glassSpeed=6.2 omenLead=1.5 omenToLaugh=1.50 wheelSpeed=1.9 flat=0
+[S4C] S4C_AUDIO_OK cues=4 distinguishable=4 failures=0 ok=True
 ```
 
-- 「可区分」= 四个 cue 的波形/基频/时长在日志里有明确不同读数，不是「都播了」。
+- 「可区分」= 对日志里的 `(freq, dur, wave)` 三元组去重，`distinguishable` 必须为 4。
+- **C5 反向注入**：`-s4baudio -s4caudioflat` 时 `AudioBus.FlattenForTest` 把四个 cue 都渲染成 `cart_wheel` 的指纹，`distinguishable=1` → `S4C_AUDIO_FAIL` 且 exit=1。只证「断言真的会红」，不占回归行。
+- 负向：先记 heaviest 落地，再把该件 `Park()` 成 kinematic 挪走，用 1kg 轻货同高度落地，断言这段时间窗内**没有** `cue=heavy_drop`。
+- 已知取舍：轮声只在服务端播（客户端听得见的是重物/玻璃/前兆三类），正式素材阶段随「客户端音效广播」一并收。
 - 正式素材接入后，同一 `AudioCue` 换 clip，不改调用点（附录 B）。
 
 ### S4C-5 真人验收包 + Q4 交付报告
@@ -166,7 +176,7 @@ S4C_AUDIO_OK cues=4 distinguishable=4 failures=0 ok=True
 | `Docs/Playtest_4C_Runbook.md` | 场次安排、设备、录屏、CSV 收集、访谈脚本、A1/A2/A10/A11 判据逐条 |
 | `Docs/Playtest_4C_Interview.md` | 5 分钟访谈模板：≥3 个自主意外、≥2 次可归因共同笑、是否愿意再走一关 |
 | `Docs/P0_Delivery_Report.md` | 自动化证据索引 + 真人证据 + **Q4 条款** + 失败条件核对 + 已知缺口 |
-| `PlaytestRecorder` / `PlaytestMarker` | 复用 D7 现有组件；补 4C 事件（`leg_start` / `leg_end` / `continue_vote` / `run_end`） |
+| `PlaytestRecorder` / `PlaytestMarker` | 复用 D7 现有组件；补 4C 事件（`leg_start` / `leg_end` / `continue_vote` / `run_end`）。落点：`LevelRouteService.AfterSceneChanged`（进夜路）/ `TeamAccount.DepositId`（首次达标）/ `LevelPortal` latch（按满出口）/ `TeamAccount.ServerEndRun`（团灭） |
 
 **判据**
 

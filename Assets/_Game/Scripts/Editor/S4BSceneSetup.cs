@@ -182,6 +182,7 @@ namespace ScavengeNightmare.EditorTools
             Check(nm != null && nm.GetComponent<S4BPerfTest>() != null, "perf_test");
             Check(nm != null && nm.GetComponent<S4BShop8Test>() != null, "shop8_test");
             Check(nm != null && nm.GetComponent<S4CLegClientTest>() != null, "legclient_test");
+            Check(nm != null && nm.GetComponent<S4CAudioTest>() != null, "audio_test");
 
             CurseRuntime curseRuntime = nm != null ? nm.GetComponent<CurseRuntime>() : null;
             if (curseRuntime != null)
@@ -281,7 +282,7 @@ namespace ScavengeNightmare.EditorTools
 
             if (failures == 0)
             {
-                Debug.Log($"[S4B] S4B_VALIDATE_OK vitals=1 revive=1 wipe=1 downedHud=1 shop8=1 tests=13 portalHud=1 " +
+                Debug.Log($"[S4B] S4B_VALIDATE_OK vitals=1 revive=1 wipe=1 downedHud=1 shop8=1 tests=14 portalHud=1 " +
                           $"monsters={monsterAnchors} monsterKinds=3 noiseHud=1 monsterPrefab=1 noiseState=1 " +
                           $"curseAnchors={curseAnchors} curseKinds=2 curseHud=1 " +
                           $"legs=3 legAnchors=12/14/16 legValues=3155/4365/4785 belt=1 stamina=1 " +
@@ -421,6 +422,7 @@ namespace ScavengeNightmare.EditorTools
             changed |= AddIfMissing<S4BPerfTest>(nm.gameObject);
             changed |= AddIfMissing<S4BShop8Test>(nm.gameObject);
             changed |= AddIfMissing<S4CLegClientTest>(nm.gameObject);
+            changed |= AddIfMissing<S4CAudioTest>(nm.gameObject);
 
             GameObject dollPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DollPrefabPath);
             GameObject tabletPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(TabletPrefabPath);

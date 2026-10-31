@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ScavengeNightmare.Audio;
 using UnityEngine;
 
 namespace ScavengeNightmare.Gameplay
@@ -109,6 +110,10 @@ namespace ScavengeNightmare.Gameplay
             }
 
             SpawnFragments();
+
+            // R6 碎裂音：ApplyBreak 在四端都会走到（服务端判完走 RpcShatter），
+            // 所以这里直接播本地音，不另发 RPC。
+            AudioBus.Play(AudioCue.GlassBreak, transform.position, 1f, $"speed={impactSpeed:F1}");
 
             FrictionEvents.Report("易碎", $"{name} 碎了（{impactSpeed:F1} m/s），价值归零", 520f);
         }

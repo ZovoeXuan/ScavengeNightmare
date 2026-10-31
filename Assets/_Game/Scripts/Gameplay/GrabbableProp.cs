@@ -1,3 +1,4 @@
+using ScavengeNightmare.Audio;
 using ScavengeNightmare.Curses;
 using ScavengeNightmare.Networking;
 using UnityEngine;
@@ -74,6 +75,8 @@ namespace ScavengeNightmare.Gameplay
         /// </summary>
         private void OnCollisionEnter(Collision collision)
         {
+            PlayHeavyDrop(collision);
+
             if (!FrictionEvents.Tuning.enableImpactStun || profile == null)
             {
                 return;
@@ -109,6 +112,32 @@ namespace ScavengeNightmare.Gameplay
             }
 
             FrictionEvents.Report("手滑砸脚", $"{profile.displayName} 砸中玩家（{speed:F1} m/s）硬直 {seconds:F1}s", 420f);
+        }
+
+        /// <summary>
+        /// R6 重物落地：≥30kg 且撞击速度 ≥1.5m/s 才响。
+        /// 联网时由服务端判定并广播（客户端物件 kinematic，收不到碰撞），
+        /// 单机时本地直接播。阈值不跟硬直表走——落地声是「听得见」，不是「砸伤」。
+        /// </summary>
+        private void PlayHeavyDrop(Collision collision)
+        {
+            if (profile == null || profile.mass < 30f)
+            {
+                return;
+            }
+
+            if (collision.relativeVelocity.magnitude < 1.5f)
+            {
+                return;
+            }
+
+            if (networked != null)
+            {
+                networked.HeavyDropAuthoritative(profile.mass);
+                return;
+            }
+
+            AudioBus.Play(AudioCue.HeavyDrop, transform.position, 1f, $"mass={profile.mass:F1}");
         }
 
         private void Awake()

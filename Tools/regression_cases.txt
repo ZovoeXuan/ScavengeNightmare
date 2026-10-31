@@ -16,7 +16,7 @@
 # (S4B-5 raised it 23 -> 27); deliberately REMOVING cases must lower it in
 # the same commit.
 #
-# expected_min: 30
+# expected_min: 31
 #
 # Ordering rule: a detached-host row must be immediately followed by its client
 # row. Two pairs exist today:
@@ -86,3 +86,10 @@ s4bshop8|-s4bshop8|S4B_SHOP8_OK|S4C-1 shop 8/8 durable=6; belt 1->2 slots, stami
 
 s4clegclienthost|-s4clegclienthost|S4C_LEGCLIENT_OK|S4C-2 team continue HOST half (detached, paired with next row)
 s4clegclient|-s4clegclient -address=127.0.0.1|S4C_LEGCLIENT_CLIENT_OK|S4C-2 team continue CLIENT half; lone 1/2 must not advance
+
+# --- Sprint 4C-4 (1) ---
+# C5 (all four cues share one waveform -> distinguishable=1 -> FAIL) is injected
+# by -s4caudioflat and documented in the dev log; it is not a regression row
+# because the runner only accepts PASS.
+
+s4baudio|-s4baudio|S4C_AUDIO_OK|S4C-4 four placeholder cues via real hooks; fingerprints distinguishable=4

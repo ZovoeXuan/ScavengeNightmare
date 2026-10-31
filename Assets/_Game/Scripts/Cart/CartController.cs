@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Mirror;
+using ScavengeNightmare.Audio;
 using ScavengeNightmare.Gameplay;
 using ScavengeNightmare.Networking;
 using ScavengeNightmare.Noise;
@@ -300,6 +301,14 @@ namespace ScavengeNightmare.Cart
             Vector3 v = body.velocity;
             float planar = new Vector2(v.x, v.z).magnitude;
             lastNoiseSpeed = planar;
+
+            // R6 轮声：速度过 1.5m/s 才响，音高随速度在 0.8–1.2 之间。
+            // 阈值与噪音曲线的 speedSlow 同口径——低于它连 NoiseBus 都不记，轮声也不该响。
+            if (planar >= 1.5f)
+            {
+                float pitch = 0.8f + Mathf.Clamp01((planar - 1.5f) / 1.5f) * 0.4f;
+                AudioBus.Play(AudioCue.CartWheel, body.position, pitch, $"speed={planar:F1}");
+            }
 
             if (planar < 0.05f)
             {

@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using Mirror;
+using ScavengeNightmare.Audio;
 using ScavengeNightmare.Cart;
 using ScavengeNightmare.Combat;
 using ScavengeNightmare.Gameplay;
@@ -486,6 +487,11 @@ namespace ScavengeNightmare.Curses
                 {
                     state.windup = item.LaughWindup;
                     item.RpcLaughWindup();
+
+                    // R6 诅咒前兆：前兆一开始就响，lead 就是「还有多久笑出来」。
+                    // 位置取诅咒物本身：玩家要能靠声音判断来源，不是全局播一条无方位的音。
+                    AudioBus.Play(AudioCue.CurseOmen, item.transform.position, 1f, $"lead={item.LaughWindup:F1}");
+
                     Debug.Log($"[S4B] GATE_CURSE_WINDUP id={item.CurseId} holder={item.HolderNetId} windup={item.LaughWindup:F2}");
                 }
             }

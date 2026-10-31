@@ -1,4 +1,5 @@
 using Mirror;
+using ScavengeNightmare.Audio;
 using UnityEngine;
 
 namespace ScavengeNightmare.Gameplay
@@ -47,6 +48,27 @@ namespace ScavengeNightmare.Gameplay
             {
                 fragile.ApplyBreak(speed);
             }
+        }
+
+        /// <summary>
+        /// R6 重物落地：客户端物件是 kinematic 的，收不到碰撞回调，
+        /// 所以响声必须由服务端判定后用一条 ClientRpc 送到各端，
+        /// 否则双人局里客户端整局听不到任何落地声。
+        /// </summary>
+        public void HeavyDropAuthoritative(float mass)
+        {
+            if (!isServer)
+            {
+                return;
+            }
+
+            RpcHeavyDrop(mass, transform.position);
+        }
+
+        [ClientRpc]
+        private void RpcHeavyDrop(float mass, Vector3 at)
+        {
+            AudioBus.Play(AudioCue.HeavyDrop, at, 1f, $"mass={mass:F1}");
         }
     }
 }
