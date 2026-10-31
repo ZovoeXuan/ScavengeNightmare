@@ -8,6 +8,15 @@
 #   - ASCII only. cmd reads manifests in the OEM codepage; UTF-8 Chinese turns
 #     into garbage that can contain command separators and silently drop cases.
 #
+# expected_min is a FLOOR, not an exact count: adding a case never requires
+# editing it, but losing rows does trip it. It exists because cmd's "for /f"
+# silently drops a final line that has no trailing newline - a lost CRLF makes
+# the last case vanish, and without a floor the run still prints a clean
+# "OK passes=22 expected=22". If you ADD cases, leave this alone; if you
+# deliberately REMOVE cases, lower it in the same commit.
+#
+# expected_min: 23
+#
 # Ordering rule: s4bdownhost must be immediately followed by s4bdownclient.
 # That pair is ONE acceptance case that needs TWO processes running at once
 # (host listens, client connects to it). run_regression.bat launches the host
