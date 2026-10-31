@@ -402,5 +402,8 @@ GATE_CURSE_LEG leg=1 want=0 / leg=2 1/1 / leg=3 2/2
 ## 12. 遗留（S4B-4 之后）
 
 - **S4B-5**：三关梯度锚点 12/14/16、配额 1800/2400/2800、工具带/体能、`-s4bshop8`、怪物美术替换、41 条回归收口。
+  - 配额改动必须与断言同批：`LevelRouteService.legQuotas = { 2632, 2632, 2800 }` 与
+    `S4ALoopTest.cs:159` 的 `account.LegQuota == 2632` 要一起改（后者改为读表值）。
+    单独改配额会让 `-s4aloop` 立即红，并作废刚拿到的 6 轮矩阵证据（需重建重跑）。
 - **TECHDEBT-4B-01**：道具生成缺运行时清单埋点（`D65_SPAWN_ITEM profile= at= anchor=`），用于坐实走廊类归因；需 `S4A_TEST_BUILD` 闸门。
 - **观察项**：`flashlight_no_stun` 1/18；`-s4bmon` 的 chase 子项已稳，整条用例不宣布“已稳定”。
