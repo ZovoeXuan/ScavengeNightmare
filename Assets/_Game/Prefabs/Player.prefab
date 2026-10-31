@@ -27,6 +27,8 @@ GameObject:
   - component: {fileID: 9056260333732735836}
   - component: {fileID: 1445069349277049365}
   - component: {fileID: -4986660173971669281}
+  - component: {fileID: 8956283857341456605}
+  - component: {fileID: -5605045706958491048}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -372,6 +374,39 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 924a8c019c739fa40b8dca9d1ad84e35, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Curses.CurseHud
+--- !u!114 &8956283857341456605
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 695582084772269870}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b98a52d55b126948af2fb2ba7439a75, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Gameplay.BeltSlot
+  syncMethod: 0
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  motor: {fileID: 0}
+  reach: 2.5
+  followStiffness: 18
+  waistHeight: 0.85
+--- !u!114 &-5605045706958491048
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 695582084772269870}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 32538ef31ccdc33479e412876a153372, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScavengeNightmare.Networking.PlayerStamina
+  motor: {fileID: 0}
 --- !u!1 &2376511499117349623
 GameObject:
   m_ObjectHideFlags: 0
