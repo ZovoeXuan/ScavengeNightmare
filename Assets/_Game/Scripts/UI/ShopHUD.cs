@@ -21,8 +21,20 @@ namespace ScavengeNightmare.UI
             ShopTerminal terminal = ShopTerminal.Instance;
             TeamAccount account = TeamAccount.Instance;
 
-            if (terminal == null || account == null || !terminal.LocalPlayerInside())
+            if (terminal == null || account == null)
             {
+                return;
+            }
+
+            if (!terminal.LocalPlayerInside())
+            {
+                if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Safehouse")
+                {
+                    EnsureStyles();
+                    GUILayout.BeginArea(new Rect(Screen.width - 320f, 16f, 304f, 42f), boxStyle);
+                    GUILayout.Label("💡 走近补给服务台呼出商店 (按 1~8 购买)", hintStyle);
+                    GUILayout.EndArea();
+                }
                 return;
             }
 

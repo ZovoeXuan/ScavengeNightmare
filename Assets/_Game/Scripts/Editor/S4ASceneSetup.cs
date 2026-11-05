@@ -493,22 +493,36 @@ namespace ScavengeNightmare.EditorTools
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
+            // 1. 结构与天花板
             GameObject floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
             floor.name = "Floor";
             floor.transform.position = new Vector3(0f, -0.25f, 0f);
             floor.transform.localScale = new Vector3(26f, 0.5f, 18f);
+
+            GameObject ceiling = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ceiling.name = "Ceiling";
+            ceiling.transform.position = new Vector3(0f, 4.25f, 0f);
+            ceiling.transform.localScale = new Vector3(26f, 0.5f, 18f);
 
             CreateWall("Wall_North", new Vector3(0f, 2f, 9f), new Vector3(26f, 4f, 0.5f));
             CreateWall("Wall_South", new Vector3(0f, 2f, -9f), new Vector3(26f, 4f, 0.5f));
             CreateWall("Wall_West", new Vector3(-13f, 2f, 0f), new Vector3(0.5f, 4f, 18f));
             CreateWall("Wall_East", new Vector3(13f, 2f, 0f), new Vector3(0.5f, 4f, 18f));
 
+            // 2. 环境暖光照明（安全屋是温馨安全的庇护所风格，柔和暖光区别于超市的死寂）
             GameObject light = new("KeyLight");
             light.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
             Light lamp = light.AddComponent<Light>();
             lamp.type = LightType.Directional;
-            lamp.intensity = 1.1f;
+            lamp.intensity = 0.55f;
+            lamp.color = new Color(1f, 0.95f, 0.88f);
 
+            CreateCeilingLight("CeilingLight_NW", new Vector3(-5f, 3.8f, 3f), new Color(1f, 0.88f, 0.72f), 12f, 2.2f);
+            CreateCeilingLight("CeilingLight_NE", new Vector3(5f, 3.8f, 3f), new Color(1f, 0.88f, 0.72f), 12f, 2.2f);
+            CreateCeilingLight("CeilingLight_SW", new Vector3(-5f, 3.8f, -4f), new Color(1f, 0.88f, 0.72f), 12f, 2.2f);
+            CreateCeilingLight("CeilingLight_SE", new Vector3(5f, 3.8f, -4f), new Color(1f, 0.88f, 0.72f), 12f, 2.2f);
+
+            // 3. 补给商店服务台 (ShopTerminal)
             GameObject shop = new("ShopTerminal");
             shop.transform.position = new Vector3(0f, 0.6f, 3f);
             BoxCollider shopBox = shop.AddComponent<BoxCollider>();
@@ -517,16 +531,127 @@ namespace ScavengeNightmare.EditorTools
             shop.AddComponent<ShopTerminal>();
             shop.AddComponent<ScavengeNightmare.UI.ShopHUD>();
 
+            // 商店 3D 实体模型与展示柜台
+            GameObject shopDesk = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            shopDesk.name = "ShopDesk_Visual";
+            shopDesk.transform.SetParent(shop.transform, false);
+            shopDesk.transform.localPosition = new Vector3(0f, -0.15f, 0f);
+            shopDesk.transform.localScale = new Vector3(2.6f, 0.9f, 0.8f);
+
+            GameObject shopRegister = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            shopRegister.name = "ShopRegister_Visual";
+            shopRegister.transform.SetParent(shop.transform, false);
+            shopRegister.transform.localPosition = new Vector3(0.5f, 0.45f, 0f);
+            shopRegister.transform.localScale = new Vector3(0.45f, 0.35f, 0.45f);
+
+            GameObject shopShelf = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            shopShelf.name = "ShopShelf_Visual";
+            shopShelf.transform.SetParent(shop.transform, false);
+            shopShelf.transform.localPosition = new Vector3(0f, 0.6f, 1.3f);
+            shopShelf.transform.localScale = new Vector3(3.2f, 2.4f, 0.4f);
+
+            // 商店展示货品（静态纯视觉）
+            CreateStaticProp("Display_Toolbox", shop.transform, new Vector3(-0.6f, 0.42f, 0f), new Vector3(0.4f, 0.25f, 0.25f), Color.red);
+            CreateStaticProp("Display_Medkit", shop.transform, new Vector3(-0.1f, 0.42f, 0f), new Vector3(0.35f, 0.25f, 0.25f), Color.white);
+            CreateStaticProp("Display_BatteryBox", shop.transform, new Vector3(-0.8f, 0.8f, 1.2f), new Vector3(0.5f, 0.4f, 0.3f), Color.yellow);
+            CreateStaticProp("Display_SupplyBox", shop.transform, new Vector3(0.8f, 0.8f, 1.2f), new Vector3(0.6f, 0.5f, 0.3f), new Color(0.7f, 0.5f, 0.3f));
+
+            Create3DSign("ShopSign", shop.transform, new Vector3(0f, 2.2f, 0f), "🛒 补给商店 (SHOP)\n走近呼出商品列表 [按 1~8 购买 / U 撤销]", Color.yellow, 32);
+
+            // 4. 逃生出口传送门 (LevelPortal_Safehouse)
             GameObject portal = new("LevelPortal_Safehouse");
             portal.transform.position = new Vector3(0f, 0.5f, -6f);
             BoxCollider portalBox = portal.AddComponent<BoxCollider>();
             portalBox.size = new Vector3(2f, 3f, 2f);
             portalBox.isTrigger = true;
             portal.AddComponent<LevelPortal>();
-
-            // S4C-2：安全屋出口的「全队确认 x/n」HUD。夜路撤离门没有确认流程，不挂。
             portal.AddComponent<ScavengeNightmare.UI.LevelPortalHud>();
 
+            // 逃生门 3D 实体防爆门框
+            GameObject doorLeft = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            doorLeft.name = "DoorFrame_Left";
+            doorLeft.transform.SetParent(portal.transform, false);
+            doorLeft.transform.localPosition = new Vector3(-1.2f, 1.1f, 0f);
+            doorLeft.transform.localScale = new Vector3(0.4f, 3.2f, 0.6f);
+
+            GameObject doorRight = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            doorRight.name = "DoorFrame_Right";
+            doorRight.transform.SetParent(portal.transform, false);
+            doorRight.transform.localPosition = new Vector3(1.2f, 1.1f, 0f);
+            doorRight.transform.localScale = new Vector3(0.4f, 3.2f, 0.6f);
+
+            GameObject doorTop = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            doorTop.name = "DoorFrame_Top";
+            doorTop.transform.SetParent(portal.transform, false);
+            doorTop.transform.localPosition = new Vector3(0f, 2.8f, 0f);
+            doorTop.transform.localScale = new Vector3(2.8f, 0.4f, 0.6f);
+
+            GameObject exitLightObj = new("ExitGreenLight");
+            exitLightObj.transform.SetParent(portal.transform, false);
+            exitLightObj.transform.localPosition = new Vector3(0f, 2.5f, 0.5f);
+            Light exitLight = exitLightObj.AddComponent<Light>();
+            exitLight.type = LightType.Point;
+            exitLight.color = new Color(0.2f, 1f, 0.4f);
+            exitLight.range = 8f;
+            exitLight.intensity = 3.5f;
+
+            Create3DSign("ExitSign", portal.transform, new Vector3(0f, 3.2f, 0f), "🚪 逃生出口 (EXIT)\n全队站在门前长按 [E] 确认进入下一关", Color.green, 32);
+
+            // 5. 备战更衣室与角色终端 (SafehouseTraitTerminal)
+            GameObject traitTerminal = new("SafehouseTraitTerminal");
+            traitTerminal.transform.position = new Vector3(-6.5f, 0.6f, 2.5f);
+            BoxCollider traitBox = traitTerminal.AddComponent<BoxCollider>();
+            traitBox.size = new Vector3(3f, 2.4f, 3f);
+            traitBox.isTrigger = true;
+            traitTerminal.AddComponent<Mirror.NetworkIdentity>();
+            traitTerminal.AddComponent<ScavengeNightmare.Traits.SafehouseTraitTerminal>();
+
+            GameObject lockerVisual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            lockerVisual.name = "Locker_Visual";
+            lockerVisual.transform.SetParent(traitTerminal.transform, false);
+            lockerVisual.transform.localPosition = new Vector3(0f, 0.5f, 0f);
+            lockerVisual.transform.localScale = new Vector3(1.8f, 2.2f, 0.8f);
+
+            Create3DSign("TraitSign", traitTerminal.transform, new Vector3(0f, 2.1f, 0f), "👔 角色更衣室 (TRAITS)\n靠近按 [C] 切换角色身份 / [V] 重抽缺点牌", new Color(0.4f, 0.9f, 1f), 30);
+
+            // 6. 安全屋休闲区 (East Lounge)
+            GameObject sofa = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            sofa.name = "LoungeSofa";
+            sofa.transform.position = new Vector3(8.5f, 0.35f, 1.5f);
+            sofa.transform.localScale = new Vector3(2.4f, 0.7f, 0.9f);
+
+            GameObject coffeeTable = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            coffeeTable.name = "CoffeeTable";
+            coffeeTable.transform.position = new Vector3(8.5f, 0.25f, 0f);
+            coffeeTable.transform.localScale = new Vector3(1.4f, 0.5f, 0.8f);
+
+            GameObject fridge = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            fridge.name = "Fridge";
+            fridge.transform.position = new Vector3(11.5f, 1.0f, 4f);
+            fridge.transform.localScale = new Vector3(0.9f, 2.0f, 0.8f);
+
+            GameObject kitchenCounter = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            kitchenCounter.name = "KitchenCounter";
+            kitchenCounter.transform.position = new Vector3(11.5f, 0.45f, 1.8f);
+            kitchenCounter.transform.localScale = new Vector3(0.8f, 0.9f, 2.2f);
+
+            GameObject microwave = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            microwave.name = "Microwave";
+            microwave.transform.position = new Vector3(11.5f, 1.1f, 1.8f);
+            microwave.transform.localScale = new Vector3(0.5f, 0.4f, 0.5f);
+
+            // 7. 物资仓库角落 (West Storage)
+            GameObject metalRack = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            metalRack.name = "MetalStorageRack";
+            metalRack.transform.position = new Vector3(-11.5f, 1.3f, -2f);
+            metalRack.transform.localScale = new Vector3(0.8f, 2.6f, 4.2f);
+
+            CreateStaticProp("Crate_1", null, new Vector3(-10.5f, 0.4f, -0.5f), new Vector3(0.8f, 0.8f, 0.8f), new Color(0.7f, 0.5f, 0.3f));
+            CreateStaticProp("Crate_2", null, new Vector3(-10.5f, 1.2f, -0.5f), new Vector3(0.7f, 0.7f, 0.7f), new Color(0.65f, 0.45f, 0.28f));
+            CreateStaticProp("Crate_3", null, new Vector3(-10.5f, 0.4f, -1.8f), new Vector3(0.8f, 0.8f, 0.8f), new Color(0.7f, 0.5f, 0.3f));
+            CreateStaticProp("Barrel_1", null, new Vector3(-10.5f, 0.5f, -3.2f), new Vector3(0.7f, 1.0f, 0.7f), new Color(0.2f, 0.4f, 0.7f));
+
+            // 8. 入口出生点
             GameObject anchor = new("SceneEntryAnchor_Safehouse");
             anchor.transform.position = new Vector3(0f, 0.05f, 5.5f);
             SceneEntryAnchor entry = anchor.AddComponent<SceneEntryAnchor>();
@@ -537,6 +662,55 @@ namespace ScavengeNightmare.EditorTools
 
             RegisterBuildScene(SafehouseScenePath);
             Debug.Log($"[S4A] S4A_SAFEHOUSE_BUILT path={SafehouseScenePath}");
+        }
+
+        private static void CreateCeilingLight(string name, Vector3 pos, Color color, float range, float intensity)
+        {
+            GameObject lightObj = new(name);
+            lightObj.transform.position = pos;
+            Light l = lightObj.AddComponent<Light>();
+            l.type = LightType.Point;
+            l.color = color;
+            l.range = range;
+            l.intensity = intensity;
+        }
+
+        private static void CreateStaticProp(string name, Transform parent, Vector3 pos, Vector3 scale, Color color)
+        {
+            GameObject prop = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            prop.name = name;
+            if (parent != null)
+            {
+                prop.transform.SetParent(parent, false);
+                prop.transform.localPosition = pos;
+            }
+            else
+            {
+                prop.transform.position = pos;
+            }
+            prop.transform.localScale = scale;
+            Renderer r = prop.GetComponent<Renderer>();
+            if (r != null)
+            {
+                Material m = new(Shader.Find("Universal Render Pipeline/Lit"));
+                m.color = color;
+                r.material = m;
+            }
+        }
+
+        private static void Create3DSign(string name, Transform parent, Vector3 pos, string text, Color color, int fontSize)
+        {
+            GameObject sign = new(name);
+            sign.transform.SetParent(parent, false);
+            sign.transform.localPosition = pos;
+            sign.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            TextMesh tm = sign.AddComponent<TextMesh>();
+            tm.text = text;
+            tm.color = color;
+            tm.fontSize = fontSize;
+            tm.alignment = TextAlignment.Center;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.characterSize = 0.07f;
         }
 
         private static void CreateWall(string name, Vector3 position, Vector3 scale)

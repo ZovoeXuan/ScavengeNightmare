@@ -54,6 +54,81 @@ namespace ScavengeNightmare.Traits
 #endif
         }
 
+        private GUIStyle boxStyle;
+        private GUIStyle titleStyle;
+        private GUIStyle rowStyle;
+        private GUIStyle hintStyle;
+
+        private void OnGUI()
+        {
+            if (S4ACli.IsTestRun || !NetworkClient.active)
+            {
+                return;
+            }
+
+            NetworkIdentity local = NetworkClient.localPlayer;
+            if (local == null)
+            {
+                return;
+            }
+
+            if (Vector3.Distance(transform.position, local.transform.position) > interactRadius)
+            {
+                return;
+            }
+
+            PlayerTraits traits = local.GetComponent<PlayerTraits>();
+            if (traits == null)
+            {
+                return;
+            }
+
+            EnsureStyles();
+
+            string identityName = traits.Identity != null ? traits.Identity.displayName : "默认";
+            string identityDesc = traits.Identity != null ? traits.Identity.description : "";
+            string cardName = traits.Card != null ? traits.Card.displayName : "无";
+            string cardNotes = traits.Card != null ? traits.Card.comedyNotes : "";
+            string cardComp = traits.Card != null ? traits.Card.compensationText : "";
+
+            GUILayout.BeginArea(new Rect(16f, 16f, 400f, 140f), boxStyle);
+            GUILayout.Label("安全屋 · 备战更衣室", titleStyle);
+            GUILayout.Space(2f);
+            GUILayout.Label($"当前身份：<b>【{identityName}】</b> - {identityDesc}", rowStyle);
+            GUILayout.Label($"当前缺点：<b>【{cardName}】</b> - {cardNotes}（收益：{cardComp}）", rowStyle);
+            GUILayout.Space(4f);
+            GUILayout.Label("按 <b>[C]</b> 切换角色身份 (大力士/近视眼/瘸子/灵敏)", hintStyle);
+            GUILayout.Label("按 <b>[V]</b> 重新抽取缺点牌 (冲突加权笑点组合)", hintStyle);
+            GUILayout.EndArea();
+        }
+
+        private void EnsureStyles()
+        {
+            boxStyle ??= new GUIStyle(GUI.skin.box)
+            {
+                padding = new RectOffset(12, 12, 10, 10),
+                alignment = TextAnchor.UpperLeft
+            };
+
+            titleStyle ??= new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 16,
+                fontStyle = FontStyle.Bold
+            };
+
+            rowStyle ??= new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 13,
+                wordWrap = true
+            };
+
+            hintStyle ??= new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 12,
+                fontStyle = FontStyle.Bold
+            };
+        }
+
         [Command(requiresAuthority = false)]
         private void CmdCycleIdentity(NetworkIdentity playerIdentity)
         {
