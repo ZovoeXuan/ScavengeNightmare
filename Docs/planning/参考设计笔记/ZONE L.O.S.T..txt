@@ -1,0 +1,445 @@
+ZONE L.O.S.T. 演示 - 热修复 #4（v0.1.7）
+社区公告
+DAKA_Production
+三周前
+ZONE L.O.S.T. 演示 - 热修复 #4（v0.1.7）
+
+大家好，
+
+感谢大家关于卡顿和冻结的报告和剪辑——这次更新就是基于这些问题构建的。热修复#5的核心是优化：游戏运行更流畅，尤其是在合作模式和语音聊天时。
+
+更流畅的游戏体验
+
+- 修复了你们中有些人大约每秒出现一次的小卡顿。
+
+- 固定的合作环节，玩家会暂时停止见面。如果你还看到这条，请告诉我们。
+
+- 游戏现在后台工作减少了，所以第一关的帧率应该更稳定。
+
+语音聊天
+
+- 语音聊天更轻，通话时卡顿更少。
+
+- 语音现在在更多类型的麦克风上表现更好，包括部分Realtek麦克风。
+
+- 其他玩家的嘴巴现在会像你自己说话时那样移动。
+
+- 正常说话现在被怪物听为正常语言，而非喊叫。喊叫声依然更大。
+
+枪械与门
+
+- 所有状态枪现在的锥形更宽，更容易瞄准。
+
+- 关卡门不再能像拾取物品一样捡起。
+
+如果还是觉得不对劲，请通过游戏内表单反馈给我们——这对我们帮助很大。
+
+10月19日至26日Steam Next Fest见！
+
+ZONE L.O.S.T.团队
+
+ZONE L.O.S.T. 演示 - 热修复 #3（v0.1.6）
+社区公告
+DAKA_Production
+三周前
+ZONE L.O.S.T. 演示 - 热修复 #3（v0.1.6）
+
+大家好，
+
+感谢所有的报告、日志和剪辑——这次更新几乎完全基于这些内容。最大的修复：玩家被击倒后（尤其是生长枪后）会卡在地上，怪物速度大约只有预期的一半，以及英特尔图形上的蓝屏。
+
+
+
+图形
+
+- 英特尔显卡（Iris Xe、UHD等）：关闭了在这些GPU上无法正常工作的渲染功能。游戏现在应该能正常启动并绘制关卡。
+
+- 性能：灯泡优化器在关卡上再次工作——远处的灯和身后的灯（包括闪烁的）及其阴影都会关闭。
+
+
+被击倒后站起来
+
+- 固定玩家有时无论如何都无法与空间一起起身。
+
+- 修正了被生长枪击中后卡在地上的问题（天花板检定会随着你的体型变大而变大，所以大玩家在室内永远站不起来）。
+
+- 固定在物品上或不算作“地上”的玩家。
+
+- 固定尺寸不同步：如果你在大体时被击倒，你会在自己的屏幕上保持巨大，而朋友们看到你正常漂浮在空中。效果结束后，即使你躺着，你的体型也会恢复正常。
+
+
+怪物
+
+- 固定怪物在高帧率下以约一半速度移动。这也修复了“月球行走”的问题——腿部动画现在与真实移动速度匹配。提醒一下：追逐怪物现在明显更快了，这本来就是它们应该有的速度。
+
+- 巡逻速度：巡逻怪兽1.0 -> 0.9，工程师0.6 -> 0.9。
+
+- 工程师追击速度：3.0 -> 3.2（与巡逻怪物相同）。
+
+- 所有步行、警告和追逐动画均重新调整以适应新速度。
+
+- 修正了减速枪导致怪物减速速度是预期的两倍。
+
+
+级别
+
+- 第一关现在生成6个引线，所以你不必再在整个关卡里寻找最后一个。
+
+- 修复了一些关卡加载后悬浮在空中的物品，直到有人触碰它们。
+
+- 逃逸阶段警报声再次响起（其声音范围仅达2米，现为12米）。它们保持较小声，避免盖过其他声音，你还可以通过游戏内的音乐音量调节调低。
+
+
+球员
+
+- 故意摔倒（Z）或被朋友抱起不再会把眼镜撞掉。眼镜仍然会被真实撞击飞走。
+
+- 掉落的眼镜不应再从地板中掉落。
+
+- 携带玩家不再击倒撞到的人。
+
+- 被投掷的玩家现在会击倒其他玩家1秒或直到撞到地板或墙壁。扔他的玩家永远不会被击中。
+
+- 坐轮椅或轮椅：撞到物体时不再会摔倒。
+
+- 不再坐在轮椅上或椅子上点头。
+
+
+生长枪
+
+- 成年玩家的相机不再因他的步伐而晃动。
+
+- 附近玩家的摄像机震动明显较弱：每步幅为0.3 -> 0.1，最大0.6 -> 0.2。
+
+轮椅
+
+- 当胖子弄坏轮椅时，你会听到它断裂的声音，轮椅会碎成几块（框架、轮子和靠背），你可以捡起来。
+
+反重力枪
+
+- 绿色幽灵轨迹更透明且出现频率较低（每0.12秒->0.4秒），所以你能再次透视它。
+
+
+大厅与菜单
+
+- 创建大厅现在会显示一个简短提示：你组中拥有最强玩家角色的玩家应当主持大厅。
+
+- 大厅新增“邀请好友”提示：走到按钮前按E键打开Steam邀请窗口。
+
+- 按下START GAME后的人群恐慌声现在变成了h。
+
+- Discord 枪和其他链接枪现在会在默认浏览器中打开链接。
+
+- 语音聊天音量滑块现在提升到200%，让安静的朋友更容易被听到。
+
+
+已知问题
+
+- 如果你在大个子后被生长枪击中而死，你的身体可能不会出现在朋友面前复活。我们正在调查。
+
+
+如果仍有故障，请通过游戏内表单发送报告——其中包含我们需要的日志。
+
+10月19日至26日Steam Next Fest见！
+
+ZONE L.O.S.T.团队
+
+ZONE L.O.S.T. 演示 - 热修复 #2.2（v0.1.5）
+社区公告
+DAKA_Production
+三周前
+ZONE L.O.S.T. 演示 - 热修复 #2.2（v0.1.5）
+
+大家好，
+
+针对你们中有些人看到的蓝屏快速修复：关卡根本没有绘制（你只能看到物品和怪物），主要是在PC上，低画质预设会自动被选中。谢谢你的截图！
+
+- 修复了所有图形预设的蓝屏/隐形关卡问题。
+
+- 在渲染比例低于100%时，大厅镜子周围固定了黑色边缘。
+
+
+如果出现蓝屏，只需更新并重启游戏即可。
+
+ZONE L.O.S.T.团队
+
+ZONE L.O.S.T. 演示 - 热修复 #2.1（v0.1.3）
+社区公告
+DAKA_Production
+三周前
+ZONE L.O.S.T. 演示 - 热修复 #2.1（v0.1.3）
+
+这是对Hotfix#2的快速后续，包含两个合作模式修复。
+
+
+多人游戏
+
+- 固定的门在客户松手时弹回去：你作为客户拉开的门现在会保持在你离开时的位置，对所有人来说。
+
+- 修复了合作模式中捕鼠器无法正确触发的情况。
+
+ZONE L.O.S.T.团队
+
+ZONE L.O.S.T. 演示 - 热修复 #2（v0.1.2）
+社区公告
+DAKA_Production
+三周前
+ZONE L.O.S.T. 演示 - 热修复 #2（v0.1.2）
+
+大家好，
+
+感谢大家玩试玩版、直播以及每一次的bug报告。这一轮是关于性能、第一关和怪物：你告诉我们游戏本可以更流畅，怪物在Hotfix #1之后已经转向过多。我们还修复了合作模式中发现的一些问题。详情如下。
+
+
+性能
+
+- 选项中的新图形预设>：低/中/高/自定义。默认选择是由你的视频存储器决定的。
+
+- 低分辨率渲染关闭阴影时可放大，中分辨率为85%且软阴影减少，高渲染为100%。在我们的测试电脑上，低难度大厅运行速度大约是低档的两倍。
+
+- 地图现在由静态物体构成：墙上的装饰和海报都是没有物理效果的普通道具，桌子之间的隔断消失了，桌子变成静态，灯光在没有额外网络流量的情况下闪烁也一样。
+
+- 减少帧卡顿和播放过程中的内存抖动。
+
+- 游戏不再强制限制帧数或垂直同步。只使用你在选项里的设置。
+
+
+第一
+关
+
+- 所有房间都换了新家具布局。很多桌子下面是开放的，你可以钻到下面藏起来。
+
+- 重制战利品：物品放在桌子上、地板和墙边，房间和走廊里设有捕鼠器。医疗物品每类型限制1个，互动物品最多2个。
+
+- 更清晰的任务链：找到疏散门，按下红色按钮，将4个保险丝插入保险丝盒，逃离区域。任务文本被重写并包裹，以适应所有12种语言的屏幕。
+
+
+
+角色介绍
+
+- 奔跑现在每个角色的耐力消耗速度降低25%（每秒10->7.5）。
+
+- 无效：身体碰撞器较小（0.75米->0.67米），且正好落在地面上，因此无效现在可以放在桌子下。蹲伏键对无效者已经无效了，反正他总是处于低矮状态。现在在走路和跑步时，躲在头顶的物体下是有效的。
+
+- 脂肪现在通过门口的速度稍快（0.25 -> 0.3 m/s）。
+
+- 玩家手电筒亮度降低（亮度1 - > 0.6）。
+
+
+
+Monsters
+
+After Hotfix #1 they were too easy to shake off, so we brought some of the threat back, but without the "they always know where you are" feeling.
+
+Patrol
+
+- Walking speed 0.6 -> 1, chase speed 2.7 -> 3.2.
+
+- Vision 6 m -> 12 m.
+
+- Detection now resets after 4 seconds out of sight (before: 3).
+
+- After losing sight of you, it runs to the last place it saw you for 3 seconds (before: 2), then searches for 3 seconds (before: 1.5).
+
+Engineer
+
+- Chase speed 2.5 -> 3.
+
+- Vision 6 m -> 12 m.
+
+- Same lost-sight timings as Patrol: 4 seconds to reset, 3 seconds running to the last seen place, 3 seconds searching.
+
+
+
+General
+
+- New hiding rule: if you break line of sight and duck under cover (a table or similar), the monster loses you at once and searches around the last place it actually saw you instead of walking straight to your table.
+
+- Animation speeds were refitted to the new movement speeds, so feet still match the ground.
+
+- Rats no longer freeze or flood the log when they end up off the navigation mesh.
+
+
+
+Multiplayer and Voice Chat
+
+- Hits on other players with a held item are reported more reliably, and mousetraps now trigger on players.
+
+- Skeleton limbs now stay put instead of flying around the room.
+
+- Movement of other players is smoother (a larger interpolation buffer and faster animation sync).
+
+- The voice volume slider now goes up to 200% (before: 100%), so you can make your friends louder.
+
+
+
+Sound
+
+- The lobby alarm sounds ("Attention" and panic) are much quieter: Attention 6.2 dB -> -3 dB, panic 20 dB -> -6 dB.
+
+- The evacuation gate sounds ("Gate closing" and "Gate closed") are 9 dB quieter.
+
+- Evacuation door sounds and the menu cursor sound now follow the SFX volume slider (before they ignored it).
+
+
+
+Bug fixes
+
+- Fixed an error that could break fuse insertion when several fuses were placed.
+
+- Removed a flood of navigation errors from the rat monsters.
+
+- Fixed a stray duplicate network component on chairs.
+
+
+
+Known issues
+
+- On some PCs the Low graphics preset can show a blue screen. If it happens, switch to Medium or High and send us a report from the in-game form. We are working on it.
+
+
+
+Steam Next Fest is coming on October 19 - 26. If you enjoy the demo, wishlist ZONE L.O.S.T. and tell your friends.
+
+The ZONE L.O.S.T. team
+
+ZONE L.O.S.T. Demo - Hotfix #1 (v0.1.1)
+Community Announcements
+DAKA_Production
+3 weeks ago
+ZONE L.O.S.T. Demo - Hotfix #1 (v0.1.1)
+
+Hey everyone,
+
+Thank you for playing the demo and for every single bug report. This is our first big round of fixes and balance changes, based directly on what you sent us through the in-game form and on Discord. Monsters were too strong, co-op had rough edges, and falling over felt bad. All of that is addressed below.
+
+Monsters
+
+We heard you: the monsters were too strong and seemed to always know where you were. We have reworked how they spot, hear and chase you.
+
+Spawning
+
+- Monsters now appear only after the first lever or door of the level has been opened. No more waiting for you at the spawn door.
+
+Patrol
+
+- Walking speed 1.5 -> 0.6, alert speed 1.5 -> 1, chase speed 3.7 -> 2.7.
+
+- Vision reduced from 31 m / 62 degrees to 6 m / 90 degrees.
+
+- Detection now resets after 3 seconds out of sight (before: 5).
+
+- After losing sight of you, it runs to the last place it saw you for 2 seconds, then searches for 1.5 seconds before giving up (before: 2 seconds of running and 4 seconds of searching).
+
+Engineer
+
+- Chase speed 3 -> 2.5.
+
+- Vision reduced from 8 m / 110 degrees to 6 m / 90 degrees.
+
+- Reaction time 0.8 -> 1 second of seeing you.
+
+- Detection now resets after 3 seconds out of sight (before: 7).
+
+- After losing sight of you, it runs to the last place it saw you for 2 seconds (before: 4), then searches for 1.5 seconds (before: 4).
+
+- The Engineer no longer predicts which way you ran.
+
+Snail
+
+- Movement speed reduced from 0.35 to 0.25.
+
+
+General
+
+- Reaction time still depends on how visible you are: crouching, hiding under objects and standing still make you harder to notice, and the taller characters are easier to spot.
+
+- Walk and run animations now match the actual movement speed, so the monsters' feet no longer slide across the floor.
+
+- Monsters now walk around tables while patrolling. If a table blocks the only way through, or when they are chasing you, they still smash straight through it.
+
+- Fixed an issue where monsters alerted themselves by shoving objects around: items pushed by a monster no longer make noise that monsters can hear.
+
+
+What monsters can hear
+
+- Walking, jumping and landing can now be heard only within 3 m.
+
+- Crouch steps are silent.
+
+- Running is still heard within 4 m.
+
+- Picking up and dropping items is silent.
+
+- Turning the flashlight on and off is silent.
+
+- Objects you throw or knock around make noise within 6 m (before: 12 m).
+
+- Wheelchairs are silent unless you are sprinting, then 3 m.
+
+- Voice chat: speaking is heard within 3 m, speaking loudly within 10 m, shouting within 16 m (before: 5 / 12 / 20 m). Whispering is not heard at all.
+
+- Taking damage, dying and getting up are still heard within 12 m, and rocket explosions from far away.
+
+
+Knockdown and Movement
+
+- A "Space - stand up" hint now fades in above your inventory whenever you are able to get up.
+
+- Thrown objects no longer knock you down once they have touched the floor or a wall.
+
+- The time after a throw during which an object can knock you down was reduced from 3 to 1 second.
+
+- You can now stand up faster after being knocked down: the speed limit for getting up was raised from 1.5 to 4.
+
+- The Fat character now rolls more easily while knocked down.
+
+- You no longer get knocked down by an item you are holding yourself.
+
+- When you are knocked down, you now drop whatever you were holding.
+
+- Items held by another player now knock you down only at a slightly higher swing speed (+25%).
+
+- Held tools and weapons now keep their orientation more tightly in your hands.
+
+- The Invalid now jumps as high as the Short character when out of the wheelchair.
+
+
+Bug fixes
+
+- Fixed an issue where the Fat character could not get up after landing on his head.
+
+- Fixed an issue where the field of view stayed stuck in its wide sprint setting while you were knocked down.
+
+- Fixed an issue where glasses and wheelchairs piled up in the lobby each time you picked the same character again.
+
+Multiplayer and Voice Chat
+
+- You can now join and invite friends only while the group is in the lobby. Trying to join a match that has already started shows a clear message instead of dropping you into a broken game.
+
+- Fixed an issue where your character could move on its own and run into a wall after joining a running match.
+
+- 修复了语音聊天在某名玩家的语音聊天中无法使用，直到游戏重启。这可能是在比赛间打开主菜单>音频选项后发生的。麦克风现在被监控，停止时会自动重启。
+
+- 修复了队友声音可能忽略音量设置的问题。
+
+
+关卡
+
+- 从地图上掉出来不再意味着永远掉落。你会连续传送回去最多三次，物体也会掉回关卡。任务物品总是会归还。
+
+- 加载界面现在覆盖整个屏幕，分辨率和宽高比不限。
+
+
+本地化
+
+- 修复了法语及其他多种语言在部分PC上加载失败的问题，导致菜单保持英文。
+
+
+漏洞报告
+
+- 从主菜单发送的报告现在包含了更多有用的信息，比如最常见错误的摘要、网络和麦克风详情。请继续写。
+
+Steam Next Fest将于10月19日至26日举行。如果你喜欢试玩版，请将ZONE L.O.S.T.加入愿望列表，并告诉你的朋友们。
+
+ZONE L.O.S.T.团队
