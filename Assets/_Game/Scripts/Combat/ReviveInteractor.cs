@@ -5,10 +5,8 @@ using UnityEngine;
 namespace ScavengeNightmare.Combat
 {
     /// <summary>
-    /// 队友救援：站在 2.5m 内长按 E 4s，把倒地的队友拉起来。
-    ///
-    /// 只跑在服务端。客户端不计算救援进度，只显示 PlayerVitals 的 SyncVar，
-    /// 否则「我这边显示 90%、队友那边已经起来了」会变成两套真值。
+    /// 队友救援 V2 升级版：
+    /// 使用 ServerUpdateReviveProgress(netId, progress) 避免多名队友靠近时互相覆盖清空救援进度条。
     /// </summary>
     public sealed class ReviveInteractor : NetworkBehaviour
     {
@@ -41,7 +39,7 @@ namespace ScavengeNightmare.Combat
 
             if (!interact.InteractHeldServer)
             {
-                ResetTarget(progress > 0f ? "interrupted" : "no_input");
+                ResetTarget(progress > 0 ? "interrupted" : "no_input");
                 return;
             }
 
@@ -54,7 +52,7 @@ namespace ScavengeNightmare.Combat
             PlayerVitals next = FindNearestDowned();
             if (next == null)
             {
-                ResetTarget(progress > 0f ? "no_target" : "idle");
+                ResetTarget(progress > 0 ? "no_target" : "idle");
                 return;
             }
 
@@ -62,7 +60,7 @@ namespace ScavengeNightmare.Combat
             {
                 if (target != null && progress > 0f)
                 {
-                    target.ServerSetReviveProgress(0f);
+                    target.ServerUpdateReviveProgress(netId, 0f);
                     Debug.Log($"[S4B] GATE_REVIVE_REJECT target={target.netId} reason=target_changed");
                 }
 
@@ -72,7 +70,7 @@ namespace ScavengeNightmare.Combat
             }
 
             progress += Time.deltaTime;
-            target.ServerSetReviveProgress(progress / ReviveSeconds);
+            target.ServerUpdateReviveProgress(netId, progress / ReviveSeconds);
 
             if (progress >= ReviveSeconds)
             {
@@ -109,7 +107,7 @@ namespace ScavengeNightmare.Combat
         {
             if (target != null)
             {
-                target.ServerSetReviveProgress(0f);
+                target.ServerUpdateReviveProgress(netId, 0f);
 
                 if (progress > 0f && reason == "interrupted")
                 {

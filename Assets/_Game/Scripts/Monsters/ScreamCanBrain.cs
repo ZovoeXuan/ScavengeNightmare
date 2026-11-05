@@ -7,15 +7,9 @@ using UnityEngine;
 namespace ScavengeNightmare.Monsters
 {
     /// <summary>
-    /// 尖啸罐（S4B-3）：噪音放大器，不是击杀目标。
-    ///
-    /// 规则（服务端权威）：
-    /// - 玩家进入 6m 内，或全局噪音 ≥40 → 1.5s 前摇；
-    /// - 前摇结束 → NoiseBus +45，12m 内玩家眩晕 2s 并掉下手持物；
-    /// - 前摇内被任何投掷物（速度 ≥5m/s）命中 → 引爆：噪音只 +15、无眩晕无掉落；
-    /// - 尖叫后只把「最近的一只空眼」推进 Investigate（source=scream_can），不做全图 Chase。
-    ///
-    /// 它不移动、不攻击、也不吃视觉/听觉状态机；基类的推车击退仍会把它撞歪（可接受）。
+    /// 尖叫罐 V2 升级版：
+    /// 1) 同步 syncWindingUp 到远端客户端；
+    /// 2) 尖叫震落手持物时调用 grab.ServerForceRelease()，确保手持诅咒物/重物也能正常脱手。
     /// </summary>
     public sealed class ScreamCanBrain : MonsterBrain
     {
@@ -24,24 +18,23 @@ namespace ScavengeNightmare.Monsters
         private float windupEndsAt = -1f;
         private float cooldownUntil;
         private string triggerReason = "none";
+
         private int screamCount;
         private int preemptCount;
 
         public int ScreamCount => screamCount;
         public int PreemptCount => preemptCount;
-        public override bool IsWindingUp => windupEndsAt >= 0f;
+        public override bool IsWindingUp => syncWindingUp || windupEndsAt >= 0f;
 
         protected override string MonsterId => "scream_can";
-
         protected override bool HasCustomTick => true;
 
         protected override void CustomTick(float deltaTime, float now, PlayerVitals seen, AudibleNoise heard)
         {
-            navigator.Stop();
-
             switch (State)
             {
                 case MonsterState.Spawn:
+                    navigator.Stop();
                     if (now - stateEnteredAt >= 0.5f)
                     {
                         EnterState(MonsterState.Patrol);
@@ -50,12 +43,21 @@ namespace ScavengeNightmare.Monsters
                     return;
 
                 case MonsterState.Stunned:
+                    navigator.Stop();
+                    syncWindingUp = false;
                     if (now >= stunUntil)
                     {
                         EnterState(MonsterState.Patrol);
                     }
 
                     return;
+            }
+
+            navigator.Stop();
+
+            if (now < cooldownUntil)
+            {
+                return;
             }
 
             if (windupEndsAt >= 0f)
@@ -75,51 +77,54 @@ namespace ScavengeNightmare.Monsters
                 return;
             }
 
-            if (now < cooldownUntil)
+            float playerRadius = profile != null ? profile.screamPlayerRange : 6f;
+            PlayerVitals nearby = FindNearestPlayer(playerRadius);
+            string reason = null;
+
+            if (nearby != null)
             {
-                return;
+                reason = $"player:{nearby.netId}";
+            }
+            else
+            {
+                float noiseThreshold = profile != null ? profile.screamNoiseThreshold : 40f;
+                if (NoiseBus.Level >= noiseThreshold)
+                {
+                    reason = $"noise:{NoiseBus.Level:F0}";
+                }
             }
 
-            float playerRange = profile != null ? profile.screamPlayerRange : 6f;
-            float noiseThreshold = profile != null ? profile.screamNoiseThreshold : 40f;
-
-            PlayerVitals near = FindNearestPlayer(playerRange);
-            bool noiseTrigger = NoiseBus.Level >= noiseThreshold;
-
-            if (near == null && !noiseTrigger)
+            if (reason != null)
             {
-                return;
+                float windup = profile != null ? profile.screamWindupSeconds : 1.5f;
+                windupEndsAt = now + windup;
+                syncWindingUp = true;
+                triggerReason = reason;
+                EnterState(MonsterState.Attack);
+                Debug.Log($"[S4B] GATE_SCREAM_WINDUP monster={DisplayId} reason={reason} windup={windup:F1}s");
             }
-
-            float windup = profile != null ? profile.screamWindupSeconds : 1.5f;
-            windupEndsAt = now + windup;
-            triggerReason = near != null ? $"player:{near.netId}" : $"noise:{NoiseBus.Level:F0}";
-            EnterState(MonsterState.Attack);
-
-            Debug.Log($"[S4B] GATE_SCREAM_TRIGGER monster={DisplayId} reason={triggerReason} windup={windup:F2} " +
-                      $"at=({transform.position.x:F1},{transform.position.z:F1})");
         }
 
         private GrabbableProp FindThrownProp()
         {
             float radius = profile != null ? profile.screamPreemptRadius : 3.5f;
-            Collider[] overlapped = Physics.OverlapSphere(
-                transform.position + Vector3.up * 0.6f, radius, ~0, QueryTriggerInteraction.Ignore);
 
-            foreach (Collider collider in overlapped)
+            foreach (GrabbableProp prop in FindObjectsByType<GrabbableProp>(FindObjectsSortMode.None))
             {
-                GrabbableProp prop = collider != null ? collider.GetComponentInParent<GrabbableProp>() : null;
                 if (prop == null || prop.Body == null || prop.IsHeld)
                 {
                     continue;
                 }
 
-                if (prop.Body.linearVelocity.sqrMagnitude < PreemptSpeedThreshold * PreemptSpeedThreshold)
+                if (Vector3.Distance(transform.position, prop.transform.position) > radius)
                 {
                     continue;
                 }
 
-                return prop;
+                if (prop.Body.linearVelocity.magnitude >= PreemptSpeedThreshold)
+                {
+                    return prop;
+                }
             }
 
             return null;
@@ -127,10 +132,12 @@ namespace ScavengeNightmare.Monsters
 
         private void Preempt(float now, GrabbableProp thrown)
         {
-            float amount = profile != null ? profile.screamPreemptNoise : 15f;
             float cooldown = profile != null ? profile.screamCooldownSeconds : 6f;
+            float amount = profile != null ? profile.screamPreemptNoise : 15f;
+            float speed = thrown != null && thrown.Body != null ? thrown.Body.linearVelocity.magnitude : 0f;
 
             windupEndsAt = -1f;
+            syncWindingUp = false;
             cooldownUntil = now + cooldown;
             preemptCount++;
 
@@ -138,8 +145,8 @@ namespace ScavengeNightmare.Monsters
             EnterState(MonsterState.Patrol);
 
             Debug.Log($"[S4B] GATE_SCREAM_PREEMPT monster={DisplayId} amount={amount:F0} " +
-                      $"prop={(thrown.Profile != null ? thrown.Profile.id : "?")} " +
-                      $"speed={thrown.Body.linearVelocity.magnitude:F1} dropped=0");
+                      $"prop={(thrown != null && thrown.Profile != null ? thrown.Profile.id : "?")} " +
+                      $"speed={speed:F1} dropped=0");
         }
 
         private void Scream(float now)
@@ -150,6 +157,7 @@ namespace ScavengeNightmare.Monsters
             float cooldown = profile != null ? profile.screamCooldownSeconds : 6f;
 
             windupEndsAt = -1f;
+            syncWindingUp = false;
             cooldownUntil = now + cooldown;
             screamCount++;
 
@@ -180,7 +188,7 @@ namespace ScavengeNightmare.Monsters
                 GrabController grab = player.GetComponent<GrabController>();
                 if (grab != null && grab.IsHolding)
                 {
-                    grab.Release(false);
+                    grab.ServerForceRelease();
                     dropped++;
                     Debug.Log($"[S4B] GATE_SCREAM_DROP target={player.netId} reason=scream");
                 }

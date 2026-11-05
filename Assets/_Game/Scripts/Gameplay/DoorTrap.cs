@@ -1,13 +1,13 @@
+using Mirror;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 namespace ScavengeNightmare.Gameplay
 {
     /// <summary>
-    /// D6 夹手：一扇可开合的门。闭合过程中如果物件（或持有物）在门缝里，
-    /// 强制脱手并把物件沿门面法线推出，保证不穿模、不消失。
-    ///
-    /// 开合由 Toggle() 驱动（D6 用 E 键或测试脚本调用，D12 再决定交互方式）。
+    /// D6 夹手 V2 升级版：
+    /// 1) 修复旋转门扇使用世界 AABB bounds.extents 传入 OverlapBox 导致检测盒在 45° 时严重膨胀变形的 Bug；
+    /// 2) 联机模式下仅在服务端执行物理推挤与强制脱手 (ServerForceRelease)。
     /// </summary>
     public sealed class DoorTrap : MonoBehaviour
     {
@@ -32,7 +32,6 @@ namespace ScavengeNightmare.Gameplay
         public DoorState State => state;
         public bool IsClosing => state == DoorState.Closing;
 
-        /// <summary>运行时装配（自动化测试动态搭门时用）。</summary>
         public void Configure(Transform leafTransform, BoxCollider collider)
         {
             leaf = leafTransform;
@@ -98,7 +97,7 @@ namespace ScavengeNightmare.Gameplay
                 angle = Mathf.MoveTowards(angle, target, degreesPerSecond * Time.deltaTime);
                 leaf.localRotation = closedRotation * Quaternion.AngleAxis(angle, hingeAxis);
 
-                if (state == DoorState.Closing)
+                if (state == DoorState.Closing && (!NetworkClient.active || NetworkServer.active))
                 {
                     DetectClamp();
                 }
@@ -110,7 +109,6 @@ namespace ScavengeNightmare.Gameplay
             }
         }
 
-        /// <summary>D6 临时交互：玩家走到门 3m 内按 E 开合。D12 再换成正式交互提示。</summary>
         private void HandleInteract()
         {
             if (Application.isBatchMode)
@@ -135,14 +133,21 @@ namespace ScavengeNightmare.Gameplay
             }
         }
 
-        private void DetectClamp()        {
+        private void DetectClamp()
+        {
             if (leafCollider == null || Time.time - lastClampAt < clampCooldown)
             {
                 return;
             }
 
-            Bounds bounds = leafCollider.bounds;
-            Collider[] hits = Physics.OverlapBox(bounds.center, bounds.extents + Vector3.one * 0.03f, leaf.rotation);
+            Vector3 worldCenter = leafCollider.transform.TransformPoint(leafCollider.center);
+            Vector3 lossy = leafCollider.transform.lossyScale;
+            Vector3 halfExtents = new Vector3(
+                Mathf.Abs(leafCollider.size.x * lossy.x) * 0.5f + 0.03f,
+                Mathf.Abs(leafCollider.size.y * lossy.y) * 0.5f + 0.03f,
+                Mathf.Abs(leafCollider.size.z * lossy.z) * 0.5f + 0.03f);
+
+            Collider[] hits = Physics.OverlapBox(worldCenter, halfExtents, leafCollider.transform.rotation);
 
             foreach (Collider hit in hits)
             {
@@ -157,17 +162,24 @@ namespace ScavengeNightmare.Gameplay
                     continue;
                 }
 
-                ClampProp(prop);
+                ClampProp(prop, worldCenter);
                 lastClampAt = Time.time;
                 break;
             }
         }
 
-        private void ClampProp(GrabbableProp prop)
+        private void ClampProp(GrabbableProp prop, Vector3 doorCenter)
         {
             if (prop.Holder != null)
             {
-                prop.Holder.Release(false);
+                if (NetworkServer.active)
+                {
+                    prop.Holder.ServerForceRelease();
+                }
+                else
+                {
+                    prop.Holder.Release(false);
+                }
             }
 
             if (prop.Body == null || leaf == null)
@@ -175,10 +187,8 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
-            // 沿门面法线推出，而不是沿玩家朝向，否则可能把物件推进门里
             Vector3 normal = leaf.forward;
-            Vector3 center = leafCollider.bounds.center;
-            Vector3 diff = prop.Body.worldCenterOfMass - center;
+            Vector3 diff = prop.Body.worldCenterOfMass - doorCenter;
             float sign = Vector3.Dot(diff, normal) >= 0f ? 1f : -1f;
 
             float radius = 0.2f;

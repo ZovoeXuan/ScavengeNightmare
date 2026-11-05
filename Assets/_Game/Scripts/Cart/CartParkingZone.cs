@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Mirror;
 using UnityEngine;
 
@@ -5,12 +6,12 @@ namespace ScavengeNightmare.Cart
 {
     /// <summary>
     /// 公秤前的停车位（1.8×2.6m）。车停进来才允许整车提交。
-    ///
-    /// 只改服务端状态：客户端上这个 Trigger 同样会触发事件，
-    /// 但 SetParked 是 [Server]，客户端调用无效——不能让客户端自己决定「我停好了」。
+    /// V2 修复：使用 GetComponentInParent 并维护活跃碰撞体集合，防止推车子碰撞体进出触发器导致误判离开停车位。
     /// </summary>
     public sealed class CartParkingZone : MonoBehaviour
     {
+        private readonly HashSet<Collider> activeCartColliders = new();
+
         private void Awake()
         {
             Collider zone = GetComponent<Collider>();
@@ -30,17 +31,33 @@ namespace ScavengeNightmare.Cart
             Apply(other, false);
         }
 
-        private static void Apply(Collider other, bool value)
+        private void Apply(Collider other, bool entered)
         {
             if (!NetworkServer.active || other == null)
             {
                 return;
             }
 
-            CartController cart = other.GetComponent<CartController>();
-            if (cart != null)
+            CartController cart = other.GetComponent<CartController>() ?? other.GetComponentInParent<CartController>();
+            if (cart == null)
             {
-                cart.SetParked(value);
+                return;
+            }
+
+            activeCartColliders.RemoveWhere(c => c == null || !c.enabled || !c.gameObject.activeInHierarchy);
+
+            if (entered)
+            {
+                activeCartColliders.Add(other);
+                cart.SetParked(true);
+            }
+            else
+            {
+                activeCartColliders.Remove(other);
+                if (activeCartColliders.Count == 0)
+                {
+                    cart.SetParked(false);
+                }
             }
         }
     }

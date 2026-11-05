@@ -45,3 +45,7 @@ sysinfo.txt
 # Local AI / logs
 *.log
 !Docs/**/*.log
+
+# Upgrade backups
+.backup_v1/
+

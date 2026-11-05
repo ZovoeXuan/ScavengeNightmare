@@ -3,15 +3,15 @@ using Mirror;
 using ScavengeNightmare.Cart;
 using ScavengeNightmare.Gameplay;
 using ScavengeNightmare.Networking;
+using ScavengeNightmare.Save;
 using UnityEngine;
 
 namespace ScavengeNightmare.Economy
 {
     /// <summary>
-    /// 4A 公秤：玩家抱着货站在停车位里，长按 E 1.2s 提交手持货物。
-    /// 服务端权威，客户端只发交互状态，不参与入账。
-    ///
-    /// 交互状态必须来自 PlayerInteract（客户端上报），不能读服务端本地输入。
+    /// 公秤提交终端 V2 升级版：
+    /// 1) 修复玩家走出公秤区域或倒地时未归零 hold[motor] 导致下次进区瞬间提交的 Bug (ECO-03)；
+    /// 2) 修复 SubmitCart 在校验存档可写状态前就调用 cart.UnloadAll() 导致写盘失败时车货脱离的 Bug。
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public sealed class QuotaTerminal : NetworkBehaviour
@@ -57,16 +57,20 @@ namespace ScavengeNightmare.Economy
 
             foreach (PlayerMotor motor in Players())
             {
-                if (motor == null || !zone.bounds.Contains(motor.transform.position))
+                if (motor == null)
                 {
+                    continue;
+                }
+
+                if (motor.VitalsDowned || !zone.bounds.Contains(motor.transform.position))
+                {
+                    hold[motor] = 0f;
                     continue;
                 }
 
                 GrabController grab = motor.GetComponent<GrabController>();
                 bool holding = grab != null && grab.IsHolding;
 
-                // 整车提交（P0 无挑件）：手里空着、车停在停车位且有货，长按同一个 1.2s 即可提交。
-                // 判据放在服务端，且必须同时满足「车在停车位」，避免玩家站在公秤上随便把远处的车交了。
                 CartController cart = CartController.Instance;
                 bool cartReady = !holding && cart != null && cart.HasCargo && cart.IsParked;
 
@@ -117,16 +121,18 @@ namespace ScavengeNightmare.Economy
 
         private static void SubmitCart(CartController cart, TeamAccount account)
         {
+            P0SaveService save = P0SaveService.Instance;
+            if (save != null && (!save.Loaded || save.State == SaveState.Locked))
+            {
+                Debug.LogError($"[S4A] S4A_SAVE_REJECT cargoId=cart value=0 reason=save_unavailable state={save.State}");
+                return;
+            }
+
             List<GrabbableProp> items = cart.UnloadAll();
             int sum = account.DepositAll(items);
             Debug.Log($"[S4A] S4A_CART_SUBMIT_DONE requested={items.Count} accepted_sum={sum} balance={account.Balance}");
         }
 
-        /// <summary>
-        /// 不用 OnTriggerEnter：玩家是 CharacterController，没有 Rigidbody，触发器事件不稳定
-        /// （实测 inside 一直是空的）。改成按碰撞盒判断，结果可断言。
-        /// 但 FindObjectsByType 每帧会分配整表，所以缓存 0.5s 并顺手清理已销毁的玩家。
-        /// </summary>
         private PlayerMotor[] Players()
         {
             if (playerCache != null && Time.unscaledTime < nextPlayerRefresh)
@@ -160,7 +166,6 @@ namespace ScavengeNightmare.Economy
             return playerCache;
         }
 
-        /// <summary>供 HUD 显示当前长按进度。</summary>
         public float HoldRatioFor(PlayerMotor motor)
         {
             if (motor == null || !hold.TryGetValue(motor, out float t))

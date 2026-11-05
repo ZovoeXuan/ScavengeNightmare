@@ -7,30 +7,17 @@ using UnityEngine;
 namespace ScavengeNightmare.Economy
 {
     /// <summary>
-    /// 夜路撤离门 / 安全屋出口。服务端长按判定，客户端只负责上报交互键。
-    ///
-    /// 与公秤一样轮询玩家的 <c>InteractHeldServer</c>，不另开 Command：
-    /// 场景对象没有 owner，Command 挂不住（商店已经踩过这个坑）。
-    ///
-    /// 两条分支的规则刻意不同（P0 §3.3 / Sprint 4C R4）：
-    ///   - 夜路 → 安全屋：**任意一人**达标长按即可。撤离是个人动作，
-    ///     要求全队站在门口会把「有人先跑」变成团灭。
-    ///   - 安全屋 → 下一关：**全员**都要在门前长按确认。换关是队伍级动作，
-    ///     一个人把全队拖进下一关，就是 4A 遗留的「房主代决」假通过。
+    /// 关卡传送门 V2 升级版：
+    /// 修复倒地玩家 (VitalsDowned) 依然能触发夜间撤离读条或阻碍安全屋就绪人数判定的 Bug (ECO-04)。
     /// </summary>
     public sealed class LevelPortal : MonoBehaviour
     {
         public static LevelPortal Instance { get; private set; }
 
         [SerializeField] private float radius = 3f;
-
-        [Tooltip("长按秒数。与公秤的 1.2s 一致，避免玩家学两套手势")]
         [SerializeField] private float holdSeconds = 1.2f;
-
-        [Tooltip("安全屋确认：松手/离开半径多久后清空本人 ready。给一次按错键的后悔窗口，又不至于把门锁死")]
         [SerializeField] private float releaseGraceSeconds = 2f;
 
-        /// <summary>单个玩家在本门的确认状态。按 netId 存，玩家离开场景就丢弃。</summary>
         private sealed class ReadyState
         {
             public float Held;
@@ -45,7 +32,6 @@ namespace ScavengeNightmare.Economy
         private float firstReadyAt;
         private float lastWaitAt;
 
-        /// <summary>安全屋确认进度（服务端）。客户端读 <see cref="TeamAccount"/> 的复制值。</summary>
         public int ReadyCount { get; private set; }
         public int PlayerCount { get; private set; }
 
@@ -86,8 +72,6 @@ namespace ScavengeNightmare.Economy
             }
         }
 
-        // ==================== 夜路：任意一人撤离 ====================
-
         private void UpdateNight(LevelRouteService route)
         {
             PlayerMotor[] players = FindObjectsByType<PlayerMotor>(FindObjectsSortMode.None);
@@ -95,7 +79,7 @@ namespace ScavengeNightmare.Economy
 
             foreach (PlayerMotor motor in players)
             {
-                if (motor == null)
+                if (motor == null || motor.VitalsDowned)
                 {
                     continue;
                 }
@@ -134,7 +118,6 @@ namespace ScavengeNightmare.Economy
                 return;
             }
 
-            // 夜路未达标时每 1s 只报一次，避免长按时刷屏
             if (!account.QuotaReached && Time.unscaledTime - lastRejectAt > 1f)
             {
                 lastRejectAt = Time.unscaledTime;
@@ -144,8 +127,6 @@ namespace ScavengeNightmare.Economy
 
             route.ServerAdvance(account);
         }
-
-        // ==================== 安全屋：全队确认 ====================
 
         private void UpdateSafehouse(LevelRouteService route)
         {
@@ -171,9 +152,10 @@ namespace ScavengeNightmare.Economy
 
                 ReadyState state = StateFor((int)motor.netId);
                 PlayerInteract interact = motor.GetComponent<PlayerInteract>();
-                bool holding = FlatDistance(motor.transform.position) <= radius
-                                && interact != null
-                                && interact.InteractHeldServer;
+                bool holding = !motor.VitalsDowned
+                               && FlatDistance(motor.transform.position) <= radius
+                               && interact != null
+                               && interact.InteractHeldServer;
 
                 if (holding)
                 {
@@ -241,7 +223,6 @@ namespace ScavengeNightmare.Economy
                 return;
             }
 
-            // 有人在等、但没齐：每 1s 报一次，日志才有「等了多久」的证据
             if (anyLatched && Time.unscaledTime - lastWaitAt > 1f)
             {
                 lastWaitAt = Time.unscaledTime;
@@ -251,7 +232,6 @@ namespace ScavengeNightmare.Economy
             }
         }
 
-        /// <summary>离开安全屋：确认状态作废，复制进度归零（HUD 据此隐藏）。</summary>
         private void LeaveSafehouseState()
         {
             bool had = readyStates.Count > 0 || ReadyCount != 0 || PlayerCount != 0;

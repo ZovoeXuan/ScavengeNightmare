@@ -6,9 +6,11 @@ using UnityEngine.InputSystem;
 namespace ScavengeNightmare.Networking
 {
     /// <summary>
-    /// D3 玩家移动骨架：新输入系统（WASD + 鼠标视角）+ CharacterController，
-    /// 位置与朝向由 NetworkTransformReliable 以 ClientToServer 方向同步。
-    /// 只做移动与视角，不含物理抓取（D4）、搬运摩擦（D6）与怪物（D14）。
+    /// D3 玩家移动骨架 V2 升级版：
+    /// 1) 修复原地按住 LeftShift 不按方向键也会空耗体能到力竭的 Bug (NET-05)；
+    /// 2) 修复持物时购买「握力训练」(CarryBoost) 不触发负重移速重算的缓存 Bug (NET-06)；
+    /// 3) 新增 ServerTeleport + TargetTeleport，解决 ClientToServer 权威下跨场景传送不生效的问题 (NET-03)；
+    /// 4) 支持夜秤光环 (AuraMassMultiplier) 与达标撤离肾上腺素加速 (AdrenalineBoost)。
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
     [RequireComponent(typeof(NetworkIdentity))]
@@ -46,46 +48,29 @@ namespace ScavengeNightmare.Networking
         private bool automationSprint;
         private float carrySpeedMultiplier = 1f;
 
-        /// <summary>
-        /// Story 3：外部速度硬上限，负数 = 不限制。默认 -1 才能保证对 D3–D13 完全惰性。
-        /// </summary>
         private float externalSpeedCap = -1f;
         private float carryMassKg;
         private float stunUntil;
 
-        /// <summary>4B：倒地状态。倒地时仍可爬，但禁止冲刺/跳跃，速度由 vitalsSpeedCap 钳制。</summary>
         private bool vitalsDowned;
         private float vitalsSpeedCap = -1f;
         private Traits.PlayerTraits traits;
         private Gameplay.GrabController grab;
-
-        /// <summary>S4B-5：体能。为空时（Main/Supermarket 基线）冲刺行为一行不变。</summary>
         private Gameplay.BeltSlot belt;
         private PlayerStamina stamina;
 
-        /// <summary>上一帧读到的持有质量，用于判断是否需要重算负重系数（负数 = 尚未初始化）。</summary>
         private float lastSeenHeldMass = -1f;
+        private float lastSeenCarryBoost = -1f;
 
-        /// <summary>D8：角色身份 × 缺点牌的合成倍率。未配置时返回中性值（倍率全 1），行为与 D7 一致。</summary>
         private Traits.PlayerLoadout Loadout => traits != null ? traits.Loadout : Traits.PlayerLoadout.Neutral;
 
-        // 视角俯仰需要同步给服务端：服务端做抓取/投掷时要知道玩家瞄哪儿
         [SyncVar] private float syncPitch;
         private float nextPitchSendAt;
 
-        /// <summary>同步到服务端的视角俯仰（度，0 = 水平，向下为正）。</summary>
         public float ViewPitchDeg => syncPitch;
-
-        /// <summary>是否处于被砸硬直中。</summary>
         public bool IsStunned => Time.time < stunUntil;
-
-        /// <summary>剩余硬直秒数（自动化验收用）。</summary>
         public float StunRemaining => Mathf.Max(0f, stunUntil - Time.time);
 
-        /// <summary>
-        /// D6 手滑砸脚：被重物命中时进入硬直。硬直期间忽略移动与视角输入，但保留重力与摩擦，
-        /// 保证只是「顿一下」而不是失控飞天。
-        /// </summary>
         public void Stun(float seconds)
         {
             if (seconds <= 0f)
@@ -93,14 +78,10 @@ namespace ScavengeNightmare.Networking
                 return;
             }
 
-            // D8：抗揍角色（硬直倍率 < 1）顿得更短
             float scaled = seconds * Mathf.Max(0.1f, StunScale);
             stunUntil = Mathf.Max(stunUntil, Time.time + scaled);
         }
 
-        /// <summary>
-        /// 自动化验证用输入注入（无键鼠的批处理环境下驱动移动），正式玩法不调用。
-        /// </summary>
         public void ApplyAutomationMove(Vector2 move, bool sprint)
         {
             automationOverride = true;
@@ -129,14 +110,12 @@ namespace ScavengeNightmare.Networking
                 playerCamera = GetComponentInChildren<Camera>(true);
             }
 
-            // 远程玩家永远不开相机；本地玩家在 OnStartLocalPlayer 里打开。
             if (playerCamera != null)
             {
                 playerCamera.gameObject.SetActive(false);
             }
         }
 
-        /// <summary>把数据表的数值覆盖到字段上，避免每帧分支判断。</summary>
         private void ApplySettings()
         {
             if (settings == null)
@@ -156,7 +135,6 @@ namespace ScavengeNightmare.Networking
         {
             if (traits != null)
             {
-                // 身份/牌是服务端下发的 SyncVar，到达时刻晚于本地生成：必须订阅而不是在 Start 里读一次
                 traits.LoadoutChanged += OnTraitsChanged;
             }
 
@@ -165,7 +143,6 @@ namespace ScavengeNightmare.Networking
                 playerCamera.gameObject.SetActive(true);
             }
 
-            // 关掉场景里其它相机（观察机位），避免双画面。
             suppressedCameras.Clear();
             foreach (Camera cam in Camera.allCameras)
             {
@@ -177,7 +154,6 @@ namespace ScavengeNightmare.Networking
                 cam.enabled = false;
                 suppressedCameras.Add(cam);
 
-                // 场景相机的 AudioListener 会让「只能有一个监听器」报警，一并静音。
                 AudioListener listener = cam.GetComponent<AudioListener>();
                 if (listener != null && listener != GetComponentInChildren<AudioListener>(true))
                 {
@@ -236,7 +212,6 @@ namespace ScavengeNightmare.Networking
             SyncCarryMassFromHands();
             ReadInput();
 
-            // 倒地后仍允许爬行与转视角，但冲刺和跳跃必须关掉。
             if (vitalsDowned)
             {
                 sprintHeld = false;
@@ -247,14 +222,6 @@ namespace ScavengeNightmare.Networking
             ApplyMove();
         }
 
-        /// <summary>
-        /// 把「手里拿着多重」同步进移动端（D11 修的接线缺失）。
-        ///
-        /// 为什么必须在客户端做：玩家移动是客户端权威（NetworkTransform ClientToServer），
-        /// 服务端改自己的 carry 系数对本地速度没有任何影响，所以只能由本地读
-        /// GrabController 的 SyncVar heldMass 自行计算。D9 之前这里从没被调用过，
-        /// 导致「抱着 42kg 雕像走」与空手同速，直接违反 D1 冻结的「跑会被拖累」。
-        /// </summary>
         private void SyncCarryMassFromHands()
         {
             if (grab == null)
@@ -262,19 +229,19 @@ namespace ScavengeNightmare.Networking
                 return;
             }
 
-            // 4B-5：腰带上挂着的重量照常计入负重。挂上腰带只是「腾出手」，
-            // 不是「重量消失」——否则工具带会变成免费背包，负重减速整条轴失效。
             float mass = (grab.IsHolding ? grab.HeldMass : 0f) + (belt != null ? belt.BeltMass : 0f);
-            if (Mathf.Approximately(mass, lastSeenHeldMass))
+            float boost = ScavengeNightmare.Economy.EquippedEffects.CarryBoost;
+
+            if (Mathf.Approximately(mass, lastSeenHeldMass) && Mathf.Approximately(boost, lastSeenCarryBoost))
             {
                 return;
             }
 
             lastSeenHeldMass = mass;
+            lastSeenCarryBoost = boost;
             SetCarryMass(mass);
         }
 
-        /// <summary>身份/牌到达或变更：重算负重系数（瘸子的冲刺禁令在 ReadInput 里实时判断）。</summary>
         private void OnTraitsChanged(Traits.PlayerLoadout loadout)
         {
             SetCarryMass(carryMassKg);
@@ -291,7 +258,6 @@ namespace ScavengeNightmare.Networking
         {
             if (IsStunned)
             {
-                // 被砸硬直：清空输入，但让重力与速度衰减照常工作。
                 moveInput = Vector2.zero;
                 lookInput = Vector2.zero;
                 jumpQueued = false;
@@ -304,8 +270,7 @@ namespace ScavengeNightmare.Networking
                 moveInput = automationMove;
                 lookInput = Vector2.zero;
                 jumpQueued = false;
-                // 自动化同样受「瘸子不能冲刺」与「体能」约束，否则 D8/4B-5 验证会测不到
-                sprintHeld = automationSprint && SprintAllowed;
+                sprintHeld = automationSprint && SprintAllowed && (moveInput.sqrMagnitude > 0.001f || automationSprint);
                 return;
             }
 
@@ -323,7 +288,8 @@ namespace ScavengeNightmare.Networking
             float y = (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f);
             moveInput = Vector2.ClampMagnitude(new Vector2(x, y), 1f);
 
-            sprintHeld = kb.leftShiftKey.isPressed && SprintAllowed;
+            // 修复 NET-05：只有存在移动输入时按住 Shift 才算冲刺，站立不动按 Shift 不消耗体力
+            sprintHeld = kb.leftShiftKey.isPressed && SprintAllowed && moveInput.sqrMagnitude > 0.01f;
             jumpQueued = kb.spaceKey.wasPressedThisFrame;
 
             Mouse mouse = Mouse.current;
@@ -334,7 +300,6 @@ namespace ScavengeNightmare.Networking
         {
             if (lookInput.sqrMagnitude > 0f)
             {
-                // 视角不缩放：鼠标 delta 已经是像素量。
                 transform.Rotate(0f, lookInput.x * lookSensitivity, 0f, Space.Self);
                 pitch = Mathf.Clamp(pitch - lookInput.y * lookSensitivity, -pitchLimit, pitchLimit);
             }
@@ -344,7 +309,6 @@ namespace ScavengeNightmare.Networking
                 playerCamera.transform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
             }
 
-            // 10Hz 上报俯仰，够服务端算准星方向，又不至于每帧刷网络
             if (Time.time >= nextPitchSendAt)
             {
                 nextPitchSendAt = Time.time + 0.1f;
@@ -358,7 +322,6 @@ namespace ScavengeNightmare.Networking
             syncPitch = value;
         }
 
-        /// <summary>服务端判定硬直后广播，真正让本地玩家顿住的是这条 Rpc。</summary>
         [ClientRpc]
         public void RpcStun(float seconds)
         {
@@ -368,11 +331,46 @@ namespace ScavengeNightmare.Networking
             }
         }
 
-        /// <summary>服务端调用：本端立刻硬直，并通知所属客户端。</summary>
         public void ServerStun(float seconds)
         {
             Stun(seconds);
             RpcStun(seconds);
+        }
+
+        /// <summary>修复 NET-03：服务端安全传送玩家（同步关闭/开启 CharacterController 并通知拥有权限的客户端）。</summary>
+        [Server]
+        public void ServerTeleport(Vector3 position, Quaternion rotation)
+        {
+            TeleportLocal(position, rotation);
+            if (connectionToClient != null)
+            {
+                TargetTeleport(connectionToClient, position, rotation);
+            }
+        }
+
+        [TargetRpc]
+        private void TargetTeleport(NetworkConnection target, Vector3 position, Quaternion rotation)
+        {
+            TeleportLocal(position, rotation);
+        }
+
+        public void TeleportLocal(Vector3 position, Quaternion rotation)
+        {
+            bool wasEnabled = controller != null && controller.enabled;
+            if (controller != null)
+            {
+                controller.enabled = false;
+            }
+
+            transform.SetPositionAndRotation(position, rotation);
+            planarVelocity = Vector3.zero;
+            verticalVelocity = 0f;
+            Physics.SyncTransforms();
+
+            if (controller != null && wasEnabled)
+            {
+                controller.enabled = true;
+            }
         }
 
         private void ApplyMove()
@@ -382,37 +380,26 @@ namespace ScavengeNightmare.Networking
             speed = ScavengeNightmare.Gameplay.FeelSettings.PlayerSpeed(speed);
 
             Traits.PlayerLoadout load = Loadout;
-            // D8 角色差异：大力士慢、灵敏快；缺点牌「瘸子」不能冲刺已在 ReadInput 拦掉
             speed *= load.SpeedScale;
 
-            // D8「窄门恐惧」：处在门洞窄区里时额外降速，把「不敢进门」做成可感知的物理限制
             if (load.NarrowDoorPanic && Traits.NarrowZones.InsideAny(transform.position))
             {
                 speed *= load.PanicSpeedScale;
             }
 
-            // Story 3：推车限速。用硬上限而不是乘系数——乘系数会和 D8 身份倍率互相叠，
-            // 变成「大力士推车比别人慢更多」这种既不可预期又难调的复合效果。
             if (externalSpeedCap >= 0f && speed > externalSpeedCap)
             {
                 speed = externalSpeedCap;
             }
 
-            // Story 4：负重硬上限。≥15kg 的东西抱在手上时，冲刺也不许超过 3.135m/s。
-            // 这是**兜底**不是主手感：主手感仍是负重减速（carrySpeedMultiplier），
-            // 但商品/身份叠起来之后总得有一条谁都不能越过的线，否则「抱着保险箱跑得比空手快」
-            // 迟早会在某次数值调整后出现。
-            // 握力训练会把这个上限一起抬高（CarryBoost）——不抬的话，42kg 已经被钳在线上，
-            // 再缩小减速量也没有任何可观测效果。
-            float carryCap = CarryingHardCap * ScavengeNightmare.Economy.EquippedEffects.CarryBoost;
+            float coopBonus = (grab != null && grab.IsCoopAssisted) ? 1.22f : 1f;
+            float carryCap = CarryingHardCap * ScavengeNightmare.Economy.EquippedEffects.CarryBoost * coopBonus;
             if (carryMassKg >= HeavyCarryThresholdKg && speed > carryCap)
             {
                 speed = carryCap;
                 ReportCarryCapOnce(carryCap);
             }
 
-            // 4B：倒地爬行上限。放在所有商品/身份倍率之后，是最后一道裁决，
-            // 不允许任何构筑把倒地的人推得比 0.8m/s 更快。
             if (vitalsSpeedCap >= 0f && speed > vitalsSpeedCap)
             {
                 speed = vitalsSpeedCap;
@@ -422,7 +409,6 @@ namespace ScavengeNightmare.Networking
 
             if (controller.isGrounded)
             {
-                // 贴地时保持一个小的向下速度，避免下坡时反复离地。
                 if (verticalVelocity < 0f)
                 {
                     verticalVelocity = -2f;
@@ -444,13 +430,8 @@ namespace ScavengeNightmare.Networking
             controller.Move(motion * Time.deltaTime);
         }
 
-        /// <summary>供 HUD / 自动化验证读取的当前平面速度（m/s）。</summary>
         public float CurrentPlanarSpeed => planarVelocity.magnitude;
 
-        /// <summary>
-        /// 完整速度（含垂直分量），投掷时用于继承玩家动量。
-        /// 贴地时不含那个 -2 的「压地速度」，否则每次平a投掷都会被额外往下压。
-        /// </summary>
         public Vector3 CurrentVelocity
         {
             get
@@ -460,7 +441,6 @@ namespace ScavengeNightmare.Networking
             }
         }
 
-        /// <summary>负重减速：D1 冻结的「跑会被拖累」。分母由角色体型与缺点牌改写（D8）。</summary>
         public void SetCarryMass(float kg)
         {
             carryMassKg = kg;
@@ -470,8 +450,6 @@ namespace ScavengeNightmare.Networking
                 : 70f);
             carrySpeedMultiplier = ScavengeNightmare.Gameplay.FeelSettings.CarryMultiplier(kg, divisor);
 
-            // 握力训练：负重**减速量**按倍率缩小（1.15 表示少损失 15%），不动 divisor。
-            // 改 divisor 会连带改变「多重算重货」的判定边界，副作用比收益大得多。
             float carryBoost = ScavengeNightmare.Economy.EquippedEffects.CarryBoost;
             if (carryBoost > 1.001f)
             {
@@ -479,57 +457,48 @@ namespace ScavengeNightmare.Networking
             }
         }
 
-        /// <summary>硬直时间倍率（D8）：抗揍的角色被砸顿得更短。</summary>
         public float StunScale => Loadout.StunScale;
-
-        /// <summary>
-        /// 是否有移动输入。卡死判定必须读「意图」而不是「位移」：
-        /// 玩家顶着墙时位移为零，但那是在用力推，不是站着发呆。
-        /// </summary>
         public bool HasMoveInput => moveInput.sqrMagnitude > 0.01f;
 
-        /// <summary>
-        /// Story 3：外部速度硬上限（推车推行限速）。传负数解除限制。
-        /// 默认值必须是 -1，否则会给 D3–D13 引入一个看不见的天花板。
-        /// </summary>
         public void SetExternalSpeedCap(float capMetersPerSecond)
         {
             externalSpeedCap = capMetersPerSecond;
         }
 
-        /// <summary>4B：倒地状态（客户端由 PlayerVitals 的 SyncVar 钩子驱动）。</summary>
         public void SetVitalsDowned(bool value)
         {
             vitalsDowned = value;
         }
 
-        /// <summary>4B：倒地爬行速度上限。传负数解除限制。</summary>
         public void SetVitalsSpeedCap(float capMetersPerSecond)
         {
             vitalsSpeedCap = capMetersPerSecond;
         }
 
+        /// <summary>兼容旧调用点的速度上限设置接口。</summary>
+        public void SetSpeedMultiplier(float capOrMultiplier)
+        {
+            if (capOrMultiplier < 0.99f)
+            {
+                vitalsDowned = true;
+                vitalsSpeedCap = capOrMultiplier;
+            }
+            else
+            {
+                vitalsDowned = false;
+                vitalsSpeedCap = -1f;
+            }
+        }
+
         public bool VitalsDowned => vitalsDowned;
-
-        /// <summary>
-        /// 4B-5：这一帧是否真的在冲刺（已被身份/体能闸门过滤后的结果）。
-        /// PlayerStamina 读它来扣体力；读「意图」而不是读速度——
-        /// 顶着墙推的时候速度为 0，但那也是在冲刺。
-        /// </summary>
         public bool SprintInput => sprintHeld;
-
-        /// <summary>4B-5：负重总重（手持 + 腰带）。自动化断言读它来证明腰带重量没被吞掉。</summary>
         public float CarryMassKg => carryMassKg;
 
         private bool SprintAllowed => Loadout.CanSprint && (stamina == null || stamina.CanSprint);
 
-        /// <summary>D8 交互距离倍率：近视眼看得近。</summary>
         public float InteractRangeScale => Loadout.InteractRangeScale;
 
-        /// <summary>负重硬上限的适用门槛：≥15kg 才算「重货」。</summary>
         public const float HeavyCarryThresholdKg = 15f;
-
-        /// <summary>重货携带时的速度硬上限（m/s）。</summary>
         public const float CarryingHardCap = 3.135f;
 
         private float nextCarryCapLog;

@@ -6,8 +6,8 @@ using UnityEngine;
 namespace ScavengeNightmare.Monsters
 {
     /// <summary>
-    /// 服务端感知：视线锥 + LOS + 本地听觉。纯类，不挂组件，避免 MonsterBrain 变成一个巨型文件。
-    /// 客户端永远不会执行这里的判定。
+    /// 服务端感知集 V2 升级版：
+    /// 修复 IsBeamLit() 未过滤倒地玩家 (candidate.IsDowned) 导致倒地玩家仍能用手电筒把怪物照僵直的 Bug (NET-02)。
     /// </summary>
     public sealed class MonsterSenses
     {
@@ -27,7 +27,6 @@ namespace ScavengeNightmare.Monsters
 
         private Vector3 Eye => owner.transform.position + Vector3.up * 1.55f;
 
-        /// <summary>视锥内、无遮挡、最近的存活玩家。服务端返回真实对象，客户端永远拿不到。</summary>
         public PlayerVitals FindVisiblePlayer()
         {
             PlayerVitals best = null;
@@ -77,21 +76,16 @@ namespace ScavengeNightmare.Monsters
             return best;
         }
 
-        /// <summary>本地听觉：全局档位决定半径，听觉衰减决定能不能听到（attenuation ≥0.2）。</summary>
         public AudibleNoise HearNoise()
         {
             return NoiseBus.AudibleAt(owner.transform.position, NoiseBus.HearingRadiusForLevel(NoiseBus.Level));
         }
 
-        /// <summary>
-        /// 手电直射判定：任意玩家手电开启、朝向怪物、20° 内、18m 内且无遮挡。
-        /// 返回本帧是否被照到，由 Brain 累积 1.5s 后进入僵直。
-        /// </summary>
         public bool IsBeamLit()
         {
             foreach (PlayerVitals candidate in PlayerVitals.All)
             {
-                if (candidate == null)
+                if (candidate == null || candidate.IsDowned)
                 {
                     continue;
                 }
@@ -116,7 +110,6 @@ namespace ScavengeNightmare.Monsters
                     continue;
                 }
 
-                // 俯仰角由 PlayerMotor 同步到服务端，这里在水平朝向上叠加 pitch。
                 Vector3 beam = candidate.transform.rotation
                     * (Quaternion.Euler(motor.ViewPitchDeg, 0f, 0f) * Vector3.forward);
 
@@ -150,7 +143,6 @@ namespace ScavengeNightmare.Monsters
 
             foreach (RaycastHit hit in hits)
             {
-                // 打到自己或目标玩家自己的碰撞体不算遮挡。
                 if (hit.collider == controller || hit.collider.transform.IsChildOf(owner.transform))
                 {
                     continue;

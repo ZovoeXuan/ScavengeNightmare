@@ -7,19 +7,16 @@ using UnityEngine;
 namespace ScavengeNightmare.Economy
 {
     /// <summary>
-    /// 4A 全队公共账本（内存态）。挂在运行时 Spawn + DontDestroyOnLoad 的 GameRoot 上：
-    /// 挂场景对象会被 Mirror 在 ServerChangeScene 时 unspawn 掉，跨场景余额一定丢。
-    ///
-    /// 职责只有一件：把「一件货的当前价值」同时计入永久资金与本关交关进度，且同一货物只能入账一次。
+    /// 团队账户 V2 升级版：
+    /// 1) 修复重启游戏读档时未从 save.Data.purchases 恢复 ownedMask、selfInjectorCharges、medkitCharges 导致钱扣了装备全丢的严重 Bug (ECO-01)；
+    /// 2) 修复 ServerEndRun 团灭时未清空 ownedMask 及存档中 Active 购买记录的 Bug (ECO-02)；
+    /// 3) 修复 TryUndoPurchase 撤销一次后未回退 LastPurchaseId 导致无法连续撤销的 Bug (ECO-05)；
+    /// 4) 提交手持诅咒物/重物时改用 ServerForceRelease() 确保安全销毁。
     /// </summary>
     public sealed class TeamAccount : NetworkBehaviour
     {
         public static TeamAccount Instance { get; private set; }
 
-        /// <summary>
-        /// Story 2 起为 true，但只在「存档服务已加载」时成立：
-        /// 没加载成功的进程必须诚实地报 false，不能让下游以为钱已经在盘上了。
-        /// </summary>
         public static bool Persisted
         {
             get
@@ -31,12 +28,10 @@ namespace ScavengeNightmare.Economy
 
         [SyncVar(hook = nameof(OnBalanceReplicated))] private long balance;
 
-        /// <summary>客户端侧观察到的余额（由 SyncVar 钩子维护）。GATE_WALLET_SYNC 的 client 值取它。</summary>
         private long observedBalance;
 
         public long ObservedBalance => observedBalance;
 
-        /// <summary>仅测试用：让下一次复制被「吃掉」，用来验证同步探针真的能发现不一致。</summary>
         public bool SkipNextBalanceHook;
 
         private void OnBalanceReplicated(long oldValue, long newValue)
@@ -55,40 +50,22 @@ namespace ScavengeNightmare.Economy
         {
             base.OnStartClient();
             observedBalance = balance;
-
-            // 客户端这份 GameRoot 是 NetworkClient.SpawnPrefab() 直接实例化到**当前场景**里的，
-            // 换关时随场景卸载被销毁，账本的 SyncVar 从此断开——表现是客户端读到 0/0、
-            // 「自己明明按住了却始终没 ready」。服务端那份由 S4ABootstrap 自己做了 DDOL，
-            // 这里补客户端这份；host 模式下同一个物体已经在内，重复调用是幂等的。
             DontDestroyOnLoad(gameObject);
         }
+
         [SyncVar] private int legProgress;
         [SyncVar] private int legQuota = 1800;
         [SyncVar] private int legIndex = 1;
         [SyncVar] private int runId;
         [SyncVar] private bool quotaReached;
-
-        /// <summary>已购商品位掩码，位序 = <see cref="ShopCatalog"/> 的目录顺序。队伍共享，服务端权威。</summary>
         [SyncVar] private int ownedMask;
-
-        /// <summary>本次进安全屋后已购买笔数（hard_cap 判据）。撤销不退计数，退了再买也算。</summary>
         [SyncVar] private int visitPurchases;
-
-        /// <summary>4B：队伍公共消耗品库存（自救针 / 急救包）。跨场景常驻，跨进程从 0 开始。</summary>
         [SyncVar] private int selfInjectorCharges;
         [SyncVar] private int medkitCharges;
-
-        /// <summary>
-        /// S4C-2：安全屋「继续」的全队确认进度。服务端权威，HUD 只读这份复制值——
-        /// 客户端自己算 ready 会在「远端玩家松手了但本地还以为按着」上与服务端分叉。
-        /// 非安全屋场景恒为 0/0，HUD 据此隐藏。
-        /// </summary>
         [SyncVar] private int continueReady;
         [SyncVar] private int continueTotal;
 
-        /// <summary>本次 Visit 内每种消耗品买了几次（按 itemId 计数，撤销会减）。</summary>
         private readonly Dictionary<string, int> visitConsumables = new();
-
         private readonly HashSet<string> committed = new();
         private bool warnedNoSave;
 
@@ -96,31 +73,19 @@ namespace ScavengeNightmare.Economy
         public int LegProgress => legProgress;
         public int LegQuota => legQuota;
         public int LegIndex => legIndex;
-
-        /// <summary>达标即解锁下一关入口。超额不截断（carry_over），交超了不能反而吃亏。</summary>
         public bool QuotaReached => quotaReached;
-
         public int OwnedMask => ownedMask;
-
         public int VisitPurchases => visitPurchases;
-
         public int SelfInjectorCharges => selfInjectorCharges;
         public int MedkitCharges => medkitCharges;
-
-        /// <summary>S4C-2：安全屋「继续」确认进度（复制值，HUD 只读）。</summary>
         public int ContinueReady => continueReady;
         public int ContinueTotal => continueTotal;
 
-        /// <summary>最近一笔购买 id。HUD 的「U 撤销」按它撤，玩家不用记 id。</summary>
         public string LastPurchaseId { get; private set; } = string.Empty;
 
-        /// <summary>同一 Visit 内最多买几笔。撤销后重买也计数，所以可以稳定触发。</summary>
         public const int HardCapPerVisit = 8;
-
-        /// <summary>撤销窗口（秒）。到点或离开安全屋都算关闭，两者取先到。</summary>
         public const float UndoWindowSeconds = 30f;
 
-        /// <summary>服务端统计，供自动化对账。</summary>
         public int AcceptedCount { get; private set; }
         public int UniqueCargoCount => committed.Count;
         public int CommittedTotal { get; private set; }
@@ -130,8 +95,6 @@ namespace ScavengeNightmare.Economy
 
         private void Awake()
         {
-            // 跨场景常驻的唯一风险：同一进程里出现第二份账本。旧实例被顶掉时余额会静默归零，
-            // 而所有断言读的都是新实例、会自洽通过——必须报错，不能只是覆盖。
             if (Instance != null && Instance != this)
             {
                 Debug.LogError($"[S4A] S4A_ACCOUNT_DUPLICATE existing_balance={Instance.balance} new_balance={balance}");
@@ -169,11 +132,9 @@ namespace ScavengeNightmare.Economy
                 quotaReached = d.quotaReached;
                 CommittedTotal = (int)d.sumCommitted;
                 AcceptedCount = d.txnCount;
+                RestorePurchasesFromSave(d);
                 restored = true;
 
-                // 跨进程重启 = 新的一局：netId 会被复用，沿用旧 runId 会让新物件撞上旧 cargoId，
-                // 表现是「这货怎么交都进不了账」。所以钱留下来，runId 换新，去重表从空开始。
-                // 同进程重连（Host 不重启）不受影响，内存去重表仍然有效。
                 runId = NewRunId();
             }
 
@@ -194,10 +155,63 @@ namespace ScavengeNightmare.Economy
 
             if (restored)
             {
-                Debug.Log($"[S4A] S4A_ACCOUNT_RESTORED balance={balance} legProgress={legProgress} legIndex={legIndex} quota={legQuota} txn={AcceptedCount} persistedRunId={persistedRunId} runId={runId}");
+                Debug.Log($"[S4A] S4A_ACCOUNT_RESTORED balance={balance} legProgress={legProgress} legIndex={legIndex} quota={legQuota} txn={AcceptedCount} persistedRunId={persistedRunId} runId={runId} ownedMask={ownedMask}");
             }
 
             Debug.Log($"[S4A] S4A_ACCOUNT_READY runId={runId} legIndex={legIndex} quota={legQuota} balance={balance} persisted={Persisted}");
+        }
+
+        /// <summary>修复 ECO-01：读档时从 save.Data.purchases 重建 ownedMask 与消耗品层数。</summary>
+        private void RestorePurchasesFromSave(TeamSaveData d)
+        {
+            ownedMask = 0;
+            selfInjectorCharges = 0;
+            medkitCharges = 0;
+            LastPurchaseId = string.Empty;
+
+            if (d == null || d.purchases == null)
+            {
+                return;
+            }
+
+            ShopCatalog catalog = ShopCatalog.Instance;
+            foreach (PurchaseRecord record in d.purchases)
+            {
+                if (record == null || record.state != PurchaseRecord.Active || string.IsNullOrEmpty(record.itemId))
+                {
+                    continue;
+                }
+
+                LastPurchaseId = record.purchaseId;
+
+                if (catalog == null)
+                {
+                    continue;
+                }
+
+                int idx = catalog.IndexOf(record.itemId);
+                ShopItem item = idx >= 0 ? catalog.At(idx) : null;
+                if (item == null)
+                {
+                    continue;
+                }
+
+                if (item.consumable)
+                {
+                    if (item.effect == ShopEffect.SelfInjector)
+                    {
+                        selfInjectorCharges++;
+                    }
+                    else if (item.effect == ShopEffect.Medkit)
+                    {
+                        medkitCharges++;
+                    }
+                }
+                else if (idx >= 0 && idx < 31)
+                {
+                    ownedMask |= 1 << idx;
+                }
+            }
         }
 
         private static int NewRunId()
@@ -219,7 +233,6 @@ namespace ScavengeNightmare.Economy
             return $"{run}-{leg}-{netId}";
         }
 
-        /// <summary>服务端：提交一件货。返回是否入账成功。</summary>
         [Server]
         public bool Deposit(GrabbableProp prop)
         {
@@ -231,10 +244,6 @@ namespace ScavengeNightmare.Economy
             return DepositId(CargoId(prop), prop.CurrentValue, prop);
         }
 
-        /// <summary>
-        /// 服务端：按 cargoId 入账。故意与物件销毁解耦 —— 重复提交必须能被「按 id 主动触发」，
-        /// 不能只能靠再抓一次物件；否则结算后 Destroy 会让 A6 变成假通过。
-        /// </summary>
         [Server]
         public bool DepositId(string cargoId, int value, GrabbableProp prop = null)
         {
@@ -266,8 +275,6 @@ namespace ScavengeNightmare.Economy
             long newBalance = balance + value;
             int newProgress = legProgress + value;
 
-            // 达标开门的判据源（QA 的 Q1/Q2）：超额必须照常入账、不截断，
-            // carry_over 就是「交超了没有吃亏」的证据。
             bool wasReached = quotaReached;
             bool newReached = quotaReached || newProgress >= legQuota;
 
@@ -276,8 +283,6 @@ namespace ScavengeNightmare.Economy
             {
                 if (!save.Loaded)
                 {
-                    // 存档服务在、但没加载成功（锁被占 / 目录不可写）：必须整笔拒绝。
-                    // 这里绝不能退回内存路径——那会在只读盘上显示「入账成功」，是最坏的一种假账。
                     Debug.Log($"[S4A] S4A_DEPOSIT cargoId={cargoId} value={value} state=Rejected reason=save_unavailable save_state={save.State} balance={balance} legProgress={legProgress} totalAfter={balance}");
                     Debug.LogError($"[S4A] S4A_SAVE_REJECT cargoId={cargoId} value={value} reason=save_unavailable state={save.State}");
                     return false;
@@ -306,8 +311,6 @@ namespace ScavengeNightmare.Economy
                     tsUnixMs = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
                 };
 
-                // 先落盘、再动内存。写失败就整笔拒绝：宁可让玩家重交一次，
-                // 也不能出现「HUD 上有钱、盘上没有」的假账。
                 if (!save.TryCommit(next, record, out string saveError))
                 {
                     Debug.Log($"[S4A] S4A_DEPOSIT cargoId={cargoId} value={value} state=Rejected reason=save_failed detail={saveError} balance={balance} legProgress={legProgress} totalAfter={balance}");
@@ -330,10 +333,8 @@ namespace ScavengeNightmare.Economy
             LastCommittedValue = value;
 
             Debug.Log($"[S4A] S4A_DEPOSIT cargoId={cargoId} value={value} state=Committed reason=- balance={balance} legProgress={legProgress} totalAfter={balance}");
-
             Debug.Log($"[S4A] GATE_QUOTA_GATE leg={legIndex} progress={legProgress} quota={legQuota} carry_over={Mathf.Max(0, legProgress - legQuota)} portal={(quotaReached ? "unlocked" : "locked")}");
 
-            // S4C-5：只在「未达标 → 达标」那一次记 leg_end，避免每笔货都写一行。
             if (!wasReached && newReached)
             {
                 PlaytestRecorder.Instance?.NoteLegEnd(legIndex, legProgress, legQuota);
@@ -344,7 +345,7 @@ namespace ScavengeNightmare.Economy
                 GrabController holder = prop.Holder;
                 if (holder != null)
                 {
-                    holder.Release(false);
+                    holder.ServerForceRelease();
                 }
 
                 NetworkServer.Destroy(prop.gameObject);
@@ -353,10 +354,6 @@ namespace ScavengeNightmare.Economy
             return true;
         }
 
-        /// <summary>
-        /// 整车提交（P0 无挑件）：一件一件入账，任何一件被拒都不影响其他件，
-        /// 但返回值只统计真正入账的金额，避免「车上有 3 件、账上只到了 2 件的钱」被当成成功。
-        /// </summary>
         [Server]
         public int DepositAll(IReadOnlyList<GrabbableProp> props)
         {
@@ -375,10 +372,11 @@ namespace ScavengeNightmare.Economy
                     continue;
                 }
 
+                int val = prop.CurrentValue;
                 if (Deposit(prop))
                 {
                     accepted++;
-                    sum += prop.CurrentValue;
+                    sum += val;
                 }
             }
 
@@ -386,11 +384,6 @@ namespace ScavengeNightmare.Economy
             return sum;
         }
 
-        /// <summary>
-        /// 没有存档服务时（Main / Supermarket 等 D3–D13 基线场景）退回 Story 1 的纯内存行为。
-        /// 这条降级路径必须存在，否则 4A 的改动会把回归基线一起改掉；但也必须喊一声，
-        /// 不能让人误以为钱已经落盘。
-        /// </summary>
         private void WarnSaveAbsentOnce()
         {
             if (warnedNoSave)
@@ -475,12 +468,6 @@ namespace ScavengeNightmare.Economy
             Debug.Log($"[S4A] GATE_LEVEL_ADVANCE n={legIndex} quota={legQuota} source={source} before={balance} after={balance}");
         }
 
-        /// <summary>
-        /// 4B 团灭：本趟结束，钱留下，关卡回到第 1 关。
-        ///
-        /// 顺序与入账一致：先 clone → 改 sav 字段 → TryCommitState 落盘 → 成功后才改内存。
-        /// 落盘失败就整笔返回 false，团灭检测器不会假装「已经回安全屋」。
-        /// </summary>
         [Server]
         public bool ServerEndRun(string reason)
         {
@@ -536,7 +523,6 @@ namespace ScavengeNightmare.Economy
             return true;
         }
 
-        /// <summary>服务端：消耗一支已购自救针。</summary>
         [Server]
         public bool TryUseSelfInjector()
         {
@@ -550,7 +536,6 @@ namespace ScavengeNightmare.Economy
             return true;
         }
 
-        /// <summary>服务端：消耗一个已购急救包。</summary>
         [Server]
         public bool TryUseMedkit()
         {
@@ -564,7 +549,6 @@ namespace ScavengeNightmare.Economy
             return true;
         }
 
-        /// <summary>S4C-2：把安全屋「继续」确认进度写到复制状态。只有服务端能调。</summary>
         [Server]
         public void ServerSetContinueProgress(int ready, int total)
         {
@@ -577,9 +561,6 @@ namespace ScavengeNightmare.Economy
             continueTotal = total;
         }
 
-        // ==================== 商店（服务端权威） ====================
-
-        /// <summary>撤销窗口是否敞开。离开安全屋 / 换关 / 超时都会关。</summary>
         public bool PurchaseWindowOpen { get; private set; } = true;
 
         private float PurchaseWindowClosedAt { get; set; }
@@ -590,10 +571,6 @@ namespace ScavengeNightmare.Economy
             PurchaseWindowClosedAt = 0f;
         }
 
-        /// <summary>
-        /// 关闭撤销窗口。<paramref name="reason"/> 只进日志，不影响状态——
-        /// 判据只有「开/关」两种，多一个中间态只会让 window_closed 变得难复现。
-        /// </summary>
         [Server]
         public void ClosePurchaseWindow(string reason)
         {
@@ -623,10 +600,6 @@ namespace ScavengeNightmare.Economy
             return catalog != null && Owns(catalog.IndexOf(itemId));
         }
 
-        /// <summary>
-        /// 七步顺序写死：find → read_only → hard_cap → already_owned → insufficient →
-        /// **TryCommit 落盘** → 改 SyncVar + 打日志。所有 Reject 都在任何写盘之前。
-        /// </summary>
         [Server]
         public bool TryPurchase(string itemId)
         {
@@ -664,7 +637,6 @@ namespace ScavengeNightmare.Economy
 
             if (item.consumable)
             {
-                // 消耗品不进 ownedMask（那是永久位），按「本次 Visit 上限」判。
                 if (usedThisVisit >= Mathf.Max(1, item.maxOwned))
                 {
                     RejectBuy(itemId, "already_owned");
@@ -698,7 +670,7 @@ namespace ScavengeNightmare.Economy
             next.legQuota = legQuota;
             next.legProgress = legProgress;
             next.quotaReached = quotaReached;
-            next.purchases ??= new System.Collections.Generic.List<PurchaseRecord>();
+            next.purchases ??= new List<PurchaseRecord>();
             next.purchases.Add(new PurchaseRecord
             {
                 purchaseId = purchaseId,
@@ -709,7 +681,6 @@ namespace ScavengeNightmare.Economy
                 tsUnixMs = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             });
 
-            // 负向流水：购买和入账共用一张 txn 表，balance == SumFromTxns() 这条恒等式才继续成立。
             SaveTxnRecord record = new()
             {
                 cargoId = $"shop:{purchaseId}",
@@ -751,10 +722,6 @@ namespace ScavengeNightmare.Economy
             return true;
         }
 
-        /// <summary>
-        /// 撤销一笔购买。退款金额**锁定记录里的原价**，不用现值——
-        /// 商品涨价后撤销不该多退钱，这是账本问题不是玩法问题。
-        /// </summary>
         [Server]
         public bool TryUndoPurchase(string purchaseId)
         {

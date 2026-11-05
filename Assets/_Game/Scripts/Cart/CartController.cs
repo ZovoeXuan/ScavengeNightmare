@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Mirror;
 using ScavengeNightmare.Audio;
+using ScavengeNightmare.Combat;
 using ScavengeNightmare.Gameplay;
 using ScavengeNightmare.Networking;
 using ScavengeNightmare.Noise;
@@ -9,11 +10,11 @@ using UnityEngine;
 namespace ScavengeNightmare.Cart
 {
     /// <summary>
-    /// 推车（服务端权威）。三条不可动摇的边界：
-    /// 1) 物理位姿只在服务端算，客户端同步（NetworkTransform ServerToClient）。
-    /// 2) 折叠状态与载重是 SyncVar 单真值——载重影响速度与噪音，绝不能双端各算一套。
-    /// 3) 抱车走的是独立跟随，**不走 GrabController**：抓取链路有 breakDistance 脱手判定，
-    ///    抱车爬楼梯会被它判成脱手（技术计划风险表已列为必须规避）。
+    /// 推车（服务端权威）V2 升级版：
+    /// 1) 修复推行中直接折叠抱车导致原推行者双手锁死(handsBusy)与永久减速的 Bug；
+    /// 2) 修复抱车玩家倒地或断线时推车悬空卡死在 Carried 状态的 Bug；
+    /// 3) 修复其他人展开推车时未解除原抱车者 handsBusy 的 Bug；
+    /// 4) 支持从车板上直接抓走单件货物并即时同步 loadKg / itemCount。
     /// </summary>
     public sealed class CartController : NetworkBehaviour
     {
@@ -26,17 +27,18 @@ namespace ScavengeNightmare.Cart
 
         public static CartController Instance { get; private set; }
 
-        /// <summary>
-        /// 成功装货的累计次数。A3「徒手搬运」的唯一硬判据：徒手搬一件货前后这个数必须不变。
-        /// 不靠抓日志（帧序不稳、抓取时机容易错），计数器是确定性判据。
-        /// </summary>
         public static int LoadEventCount { get; private set; }
-
-        /// <summary>「有货时尝试折叠」被拒的累计次数。窄门用例据此断言 hint=unload 那条规则真的生效。</summary>
         public static int FoldRejectCount { get; private set; }
-
-        /// <summary>「同板质量比超限」被拒的累计次数。质量比闸门不能只写在代码里，必须有负向用例打穿它。</summary>
         public static int MassRatioRejectCount { get; private set; }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            Instance = null;
+            LoadEventCount = 0;
+            FoldRejectCount = 0;
+            MassRatioRejectCount = 0;
+        }
 
         [SerializeField] private CartProfile profile;
         [Tooltip("玩家进入推行状态的把手距离")]
@@ -57,7 +59,7 @@ namespace ScavengeNightmare.Cart
 
         private Rigidbody body;
         private BoxCollider hullCollider;
-        private BoxCollider deckCollider;
+        private Collider[] allSolidColliders;
         private CartCargo cargo;
 
         private PlayerMotor pusher;
@@ -65,12 +67,6 @@ namespace ScavengeNightmare.Cart
 
         private readonly Dictionary<PlayerMotor, bool> holdPrev = new();
         private readonly Dictionary<PlayerMotor, float> holdTime = new();
-
-        /// <summary>
-        /// 每件货在**装载瞬间**占用的半宽。布局必须用它而不是实时包围盒：
-        /// 货落板后会转、会倾斜，实时包围盒会越量越大（实测 0.265 → 0.47），
-        /// 结果第三件被误判 deck_full，明明 1.8m 板面塞得下 0.53+0.50+0.44。
-        /// </summary>
         private readonly Dictionary<GrabbableProp, float> loadHalfWidth = new();
 
         private float stallWindowTimer;
@@ -85,7 +81,10 @@ namespace ScavengeNightmare.Cart
         private float nextPlayerRefresh;
         private float interactDebugTimer;
 
-        public CartState State => (CartState)stateInt;
+        public CartState State => System.Enum.IsDefined(typeof(CartState), stateInt)
+            ? (CartState)stateInt
+            : CartState.Deployed;
+
         public float LoadKg => loadKg;
         public int ItemCount => itemCount;
         public bool HasCargo => itemCount > 0;
@@ -94,6 +93,7 @@ namespace ScavengeNightmare.Cart
         public CartCargo Cargo => cargo;
         public CartProfile Profile => profile;
         public float LastNoiseSpeed => lastNoiseSpeed;
+        public PlayerMotor CurrentPusher => pusher;
 
         public bool WantsUnstickPrompt => stalled && Time.unscaledTime >= unstickReadyAt;
 
@@ -102,12 +102,18 @@ namespace ScavengeNightmare.Cart
             Instance = this;
             body = GetComponent<Rigidbody>();
             hullCollider = GetComponent<BoxCollider>();
-            deckCollider = GetComponentInChildren<BoxCollider>();
+            allSolidColliders = GetComponentsInChildren<Collider>(true);
             cargo = GetComponent<CartCargo>();
         }
 
         private void OnDestroy()
         {
+            if (isServer)
+            {
+                ReleasePusher();
+                ReleaseCarrier();
+            }
+
             if (Instance == this)
             {
                 Instance = null;
@@ -138,10 +144,8 @@ namespace ScavengeNightmare.Cart
 
             stateInt = (int)CartState.Deployed;
             stallAnchor = transform.position;
-            Debug.Log($"[S4A] S4A_CART_READY mass={profile.cartMassKg} deck={profile.deckLength}x{profile.deckWidth} items={profile.maxItems} cap={profile.capacityKg}");
+            Debug.Log($"[S4A] S4A_CART_READY mass={profile.cartMassKg} deck={profile.deckLength}x{profile.deckWidth}");
         }
-
-        // ---------------- 服务端：每帧 ----------------
 
         private void Update()
         {
@@ -177,6 +181,23 @@ namespace ScavengeNightmare.Cart
             itemCount = cargo.Count;
         }
 
+        /// <summary>服务端通知：某件货被玩家从车上直接抓走或被偷货怪抢走。</summary>
+        [Server]
+        public void ServerNotifyPropGrabbed(GrabbableProp prop)
+        {
+            if (cargo == null || prop == null)
+            {
+                return;
+            }
+
+            if (cargo.Unload(prop))
+            {
+                loadHalfWidth.Remove(prop);
+                loadKg = cargo.LoadKg;
+                itemCount = cargo.Count;
+            }
+        }
+
         private void UpdatePushing(float dt)
         {
             PlayerMotor found = FindPusher(handleReach);
@@ -188,7 +209,6 @@ namespace ScavengeNightmare.Cart
                     ReleasePusher();
                     pusher = found;
 
-                    // 推车占住双手：要么抓货、要么推车，不能一边抱着货一边推车。
                     GrabController grab = found.GetComponent<GrabController>();
                     grab?.SetHandsBusy(true);
 
@@ -204,8 +224,6 @@ namespace ScavengeNightmare.Cart
             }
             else
             {
-                // 没人推但车在动（被撞、被货砸）：也要算噪音——
-                // 「不按按键就不产生噪音」会让玩家用车撞墙变成零成本操作。
                 EmitNoise(dt);
             }
 
@@ -230,9 +248,6 @@ namespace ScavengeNightmare.Cart
 
             float dist = toTarget.magnitude;
 
-            // 用「玩家速度」驱动，不用「距离差」驱动。
-            // 距离差驱动在死区（0.04m）附近会反复启停：追上就停、停下又被拉开，
-            // 实测 200 秒只前进 20 米（平均 0.1 m/s），而限速本来是 2.05 m/s。
             Vector3 playerVelocity = player.CurrentVelocity;
             Vector3 planarPlayer = new Vector3(playerVelocity.x, 0f, playerVelocity.z);
             float playerSpeed = planarPlayer.magnitude;
@@ -247,7 +262,6 @@ namespace ScavengeNightmare.Cart
                 desired = Vector3.zero;
             }
 
-            // 位置修正：落后越多追得越快（最多 +1 m/s），保证贴住而不是掉队
             if (dist > 0.02f)
             {
                 desired += toTarget / dist * Mathf.Clamp(dist * 3f, 0f, 1f);
@@ -255,40 +269,53 @@ namespace ScavengeNightmare.Cart
 
             body.velocity = new Vector3(desired.x, body.velocity.y, desired.z);
 
-            // 车头必须朝玩家前方。车体长轴是 local +X（板面 1.8 沿 X、0.9 沿 Z），
-            // 玩家 yaw=ψ 时车 yaw 取 ψ-90，local +X 才指向 ψ 方向。
-            // 之前直接取 ψ，车是「横着走」的：侧向宽度变成 1.8m，任何 1.2m 窄门都过不去，
-            // 视觉上货也是横着摆在车上、把手飘在车侧外面。
             Quaternion want = Quaternion.Euler(0f, player.transform.eulerAngles.y - 90f, 0f);
             body.MoveRotation(Quaternion.Slerp(body.rotation, want, Mathf.Clamp01(yawLerp * dt)));
         }
 
         private void UpdateCarried(float dt)
         {
-            if (carrier == null)
+            // 修复 BUG-CART-04：抱车人断线或倒地时自动展开落地，绝不让推车悬在半空失联
+            if (carrier == null || carrier.VitalsDowned)
             {
+                ForceUnfoldToGround();
                 return;
             }
 
-            // 抱车期间关掉物理：否则上楼梯时车会被台阶撞回，玩家永远爬不上去（A5）
             if (!body.isKinematic)
             {
                 body.isKinematic = true;
             }
 
-            // 抱着的车不能挡自己的路：车悬在玩家身前 0.7m，若碰撞体还开着，
-            // 它会先一步顶在台阶上，玩家被自己的车挡在楼梯口（实测 40 秒爬升 0 米）。
-            if (hullCollider != null && hullCollider.enabled)
-            {
-                hullCollider.enabled = false;
-            }
+            SetSolidCollidersEnabled(false);
 
             Vector3 target = carrier.transform.position
-                             + carrier.transform.forward * carriedHoldDistance
-                             + Vector3.up * carriedHoldHeight;
+                           + carrier.transform.forward * carriedHoldDistance
+                           + Vector3.up * carriedHoldHeight;
 
             body.MovePosition(Vector3.Lerp(body.position, target, Mathf.Clamp01(12f * dt)));
-            body.MoveRotation(Quaternion.Slerp(body.rotation, Quaternion.Euler(0f, carrier.transform.eulerAngles.y - 90f, 0f), Mathf.Clamp01(10f * dt)));
+            body.MoveRotation(Quaternion.Slerp(body.rotation, Quaternion.Euler(0f, carrier.transform.eulerAngles.y, 0f), Mathf.Clamp01(12f * dt)));
+        }
+
+        private void SetSolidCollidersEnabled(bool enabled)
+        {
+            if (hullCollider != null && hullCollider.enabled != enabled)
+            {
+                hullCollider.enabled = enabled;
+            }
+
+            if (allSolidColliders == null)
+            {
+                return;
+            }
+
+            foreach (Collider col in allSolidColliders)
+            {
+                if (col != null && !col.isTrigger && col.enabled != enabled)
+                {
+                    col.enabled = enabled;
+                }
+            }
         }
 
         private void EmitNoise(float dt)
@@ -302,8 +329,6 @@ namespace ScavengeNightmare.Cart
             float planar = new Vector2(v.x, v.z).magnitude;
             lastNoiseSpeed = planar;
 
-            // R6 轮声：速度过 1.5m/s 才响，音高随速度在 0.8–1.2 之间。
-            // 阈值与噪音曲线的 speedSlow 同口径——低于它连 NoiseBus 都不记，轮声也不该响。
             if (planar >= 1.5f)
             {
                 float pitch = 0.8f + Mathf.Clamp01((planar - 1.5f) / 1.5f) * 0.4f;
@@ -319,14 +344,8 @@ namespace ScavengeNightmare.Cart
             NoiseBus.ReportRate("cart", perSecond, dt, body.position);
         }
 
-        /// <summary>
-        /// 卡死判定：0.75s 窗口内「有人推」且水平位移 &lt; 0.08m 记一次停滞，连续 2 次判卡死。
-        /// 用计数不用计时，是为了避免单帧抖动把一次误判成卡死。
-        /// </summary>
         private void UpdateStall(float dt)
         {
-            // 不能只看 pusher：车被墙挡住之后玩家继续往前走，两者距离拉开，
-            // pusher 会因为超出 handleReach 变成 null，卡死就永远检测不到（实测 150 秒不动）。
             bool pushing = pusher != null || PushingCandidate();
             stallWindowTimer += dt;
 
@@ -348,14 +367,13 @@ namespace ScavengeNightmare.Cart
                 {
                     stalled = true;
                     stallStartUnscaled = Time.unscaledTime;
-                    Debug.LogWarning($"[S4A] S4A_CART_STALL_BEGIN mass={cargo.LoadKg:F1} count={cargo.Count} where=({body.position.x:F2},{body.position.z:F2})");
+                    Debug.LogWarning($"[S4A] S4A_CART_STALL_BEGIN mass={cargo.LoadKg:F1} count={cargo.Count} where={body.position:F2}");
                 }
             }
             else
             {
                 if (stalled)
                 {
-                    // 自己出来了：也算一次卡死结束，rescued=self
                     ReportStallEnd("self");
                 }
 
@@ -363,17 +381,11 @@ namespace ScavengeNightmare.Cart
             }
         }
 
-        /// <summary>
-        /// 2.8m 内有玩家、该玩家按着左键、且确实在按方向键 —— 视为「在推」。
-        /// 左键这一条不能省：推行现在要求按住左键，没按左键的人只是在车旁边站着，
-        /// 那种情况下车不动是正确行为，不该算卡死。
-        /// 用输入意图而不是位移：顶着墙时位移为零，但那是在用力推。
-        /// </summary>
         private bool PushingCandidate()
         {
             foreach (PlayerMotor motor in Players())
             {
-                if (motor == null || !motor.HasMoveInput)
+                if (motor == null || motor.VitalsDowned || !motor.HasMoveInput)
                 {
                     continue;
                 }
@@ -396,12 +408,10 @@ namespace ScavengeNightmare.Cart
         private void ReportStallEnd(string rescued)
         {
             float ms = (Time.unscaledTime - stallStartUnscaled) * 1000f;
-            Debug.Log($"[S4A] GATE_CART_STALL duration={ms:F0} mass={cargo.LoadKg:F1} count={cargo.Count} where=({body.position.x:F2},{body.position.z:F2}) rescued={rescued}");
+            Debug.Log($"[S4A] GATE_CART_STALL duration={ms:F0} mass={cargo.LoadKg:F1} count={cargo.Count} where={body.position:F2} rescued={rescued}");
             stalled = false;
             stallCount = 0;
         }
-
-        // ---------------- 服务端：交互 ----------------
 
         private void UpdateInteractions()
         {
@@ -414,6 +424,13 @@ namespace ScavengeNightmare.Cart
                     continue;
                 }
 
+                if (motor.VitalsDowned)
+                {
+                    holdPrev[motor] = false;
+                    holdTime[motor] = 0f;
+                    continue;
+                }
+
                 PlayerInteract interact = motor.GetComponent<PlayerInteract>();
                 bool held = interact != null && interact.InteractHeldServer;
 
@@ -421,17 +438,13 @@ namespace ScavengeNightmare.Cart
                 bool pressed = held && !prev;
                 holdPrev[motor] = held;
 
-                // 与 FindPusher 同口径：装货/折叠只算水平距离。
-                // 之前用 3D 距离，玩家胶囊中心比车高约 1m，垂直差直接吃掉 1.0m 的水平余量：
-                // 站在车后 1m（视觉上贴着车）实测 3D 距离 1.41m，卸货把玩家挤开 0.4m 就变成 1.82m > reach 1.8m，
-                // 折叠被拒（-s4acart-narrow 实测 narrow_fold_failed）。垂直差只用 2m 闸门挡住楼上楼下。
                 Vector3 a = motor.transform.position;
                 Vector3 b = transform.position;
                 a.y = 0f;
                 b.y = 0f;
                 float dist = Vector3.Distance(a, b);
                 bool inReach = dist <= interactReach
-                               && Mathf.Abs(motor.transform.position.y - transform.position.y) <= 2f;
+                            && Mathf.Abs(motor.transform.position.y - transform.position.y) <= 2f;
 
                 if (held)
                 {
@@ -442,7 +455,6 @@ namespace ScavengeNightmare.Cart
                     holdTime[motor] = 0f;
                 }
 
-                // 脱困优先：卡死时长按 E 抬起推车（1.0s，刻意区别于公秤提交的 1.2s）
                 if (stalled && inReach && held && holdTime[motor] >= profile.unstickHoldSeconds && Time.unscaledTime >= unstickReadyAt)
                 {
                     Unstick(motor);
@@ -464,7 +476,7 @@ namespace ScavengeNightmare.Cart
                 if (interactDebugTimer >= 0.4f)
                 {
                     interactDebugTimer = 0f;
-                    Debug.Log($"[S4A] S4A_CART_INTERACT_DEBUG held={held} grab={grabHeld} pressed={pressed} inReach={inReach} dist={dist:F2} holding={holding} state={State} count={cargo.Count}");
+                    Debug.Log($"[S4A] S4A_CART_INTERACT_DEBUG held={held} grab={grabHeld} pressed={pressed} inReach={inReach} holding={holding} state={State}");
                 }
 
                 if (holding)
@@ -492,9 +504,6 @@ namespace ScavengeNightmare.Cart
                 return;
             }
 
-            // 同板质量比闸门：1kg 配 42kg 是 42:1，接触求解会在一次物理步内把轻件弹飞出板。
-            // 与其「装上去、一推行掉一地」，不如当场拒绝并给玩家一个能理解的原因。
-            // 判定放在 deck_full 之前：空间够但质量比不成立时，玩家该看到的是 mass_ratio 而不是 deck_full。
             float minMass = prop.Mass;
             float maxMass = prop.Mass;
 
@@ -513,35 +522,19 @@ namespace ScavengeNightmare.Cart
             {
                 MassRatioRejectCount++;
                 string ratioId = prop.Profile != null ? prop.Profile.id : "?";
-                Debug.Log($"[S4A] S4A_CART_LOAD_REJECT reason=mass_ratio id={ratioId} mass={prop.Mass:F1} min={minMass:F1} max={maxMass:F1} ratio={maxMass / minMass:F1} limit={profile.maxMassRatio:F0}");
+                Debug.Log($"[S4A] S4A_CART_LOAD_REJECT reason=mass_ratio id={ratioId} mass={prop.Mass:F1} min={minMass:F1} max={maxMass:F1} limit={profile.maxMassRatio:F0}");
                 return;
             }
 
-            // 先按货物**实际包围盒**算落点，放不下就直接拒绝。
-            // 装上去再被挤下来（实测 60kg 保险箱落位后把 1kg 玻璃顶到车前 1.85m）
-            // 比拒绝难排查得多，对玩家也更困惑：明明显示装上了，一推车东西掉一地。
-            float halfLen = profile.deckLength * 0.5f;
-            float cursor = -halfLen;
-
             PruneLoadWidths();
 
-            foreach (GrabbableProp item in cargo.Items)
-            {
-                if (item == null)
-                {
-                    continue;
-                }
-
-                cursor += HalfWidthAtLoad(item) * 2f + 0.04f;
-            }
-
             float myHalf = HalfWidth(prop);
-            float lx = cursor + myHalf;
-            float lz = 0f;
+            BoxCollider hull = GetComponent<BoxCollider>();
+            float hullTop = hull != null ? hull.center.y + hull.size.y * 0.5f : profile.deckHeight;
 
-            if (lx + myHalf > halfLen)
+            if (!cargo.TryFindOpenDeckPosition(myHalf, hullTop, out Vector3 localAnchor))
             {
-                Debug.Log($"[S4A] S4A_CART_LOAD_REJECT reason=deck_full id={(prop.Profile != null ? prop.Profile.id : "?")} need={lx + myHalf:F2} limit={halfLen:F2} width={myHalf * 2f:F2}");
+                Debug.Log($"[S4A] S4A_CART_LOAD_REJECT reason=deck_full id={(prop.Profile != null ? prop.Profile.id : "?")}");
                 return;
             }
 
@@ -551,8 +544,6 @@ namespace ScavengeNightmare.Cart
                 return;
             }
 
-            // S4B-4：诅咒货上车要记住是谁装上去的。诅咒的随车归属认这个装载者，
-            // 不认当前推行者、也不认离车最近的人——否则会变成谁路过谁背锅。
             ScavengeNightmare.Curses.CursedItem cursed = prop.GetComponent<ScavengeNightmare.Curses.CursedItem>();
             if (cursed != null)
             {
@@ -562,21 +553,15 @@ namespace ScavengeNightmare.Cart
 
             LoadEventCount++;
             loadHalfWidth[prop] = myHalf;
+            cargo.RegisterHalfWidth(prop, myHalf);
 
-            grab.Release(false);
+            grab.ServerForceRelease();
 
-            // 放到碰撞体上表面之上一点点，让它自然落到板面。
-            // 放进碰撞体内部的话物理会把它弹飞——症状是「装车成功、一推行全掉」。
-            BoxCollider hull = GetComponent<BoxCollider>();
-            float hullTop = hull != null ? hull.center.y + hull.size.y * 0.5f : profile.deckHeight;
-
-            Vector3 top = transform.TransformPoint(new Vector3(lx, hullTop + 0.06f, lz));
-            cargo.RegisterAnchor(prop, new Vector3(lx, hullTop + 0.06f, lz), 0f);
+            Vector3 top = transform.TransformPoint(localAnchor);
+            cargo.RegisterAnchor(prop, localAnchor, 0f);
 
             if (prop.Body != null)
             {
-                // 板上货物开连续碰撞检测：42kg 大件落板时的冲击会把旁边的 1kg 轻件
-                // 在一次物理步内推出板外（质量比 42:1，离散检测来不及处理）。
                 prop.Body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
                 prop.Body.MovePosition(top);
                 prop.Body.MoveRotation(Quaternion.identity);
@@ -587,7 +572,7 @@ namespace ScavengeNightmare.Cart
             loadKg = cargo.LoadKg;
             itemCount = cargo.Count;
 
-            Debug.Log($"[S4A] GATE_CART count={cargo.Count} mass={cargo.LoadKg:F1} ids={cargo.IdsJoined()} at_x={lx:F2} width={myHalf * 2f:F2}");
+            Debug.Log($"[S4A] GATE_CART count={cargo.Count} mass={cargo.LoadKg:F1} ids={cargo.IdsJoined()} at_x={localAnchor.x:F2}");
 
             if (cargo.IsOverCapacity())
             {
@@ -600,14 +585,6 @@ namespace ScavengeNightmare.Cart
             }
         }
 
-        /// <summary>
-        /// 货物的水平半宽。
-        /// **优先用 BoxCollider 的局部尺寸 × 缩放**，而不是世界包围盒：
-        /// 锚点带随机朝向（<c>randomYaw</c>），同一件货转 45° 后世界 AABB 会从 0.85 涨到 1.2，
-        /// 于是「同一份代码」有时装得下、有时报 deck_full。实测雕像 0.55 → 0.96，
-        /// 直接把 A4 的两件装车判成放不下。
-        /// 拿不到 BoxCollider 才回退到世界 AABB（此时只能接受它偏保守）。
-        /// </summary>
         private static float HalfWidth(GrabbableProp prop)
         {
             if (prop == null)
@@ -621,12 +598,8 @@ namespace ScavengeNightmare.Cart
                 Vector3 scale = box.transform.lossyScale;
                 float width = Mathf.Max(Mathf.Abs(box.size.x * scale.x), Mathf.Abs(box.size.z * scale.z));
 
-                // 0 尺寸的 BoxCollider（触发器、占位盒）不能当尺寸来源：
-                // 拿它算会得到半宽 0，几件货全叠在同一坐标上，推行时互相顶飞（实测 3 件只剩 2 件）。
                 if (width > 0.05f)
                 {
-                    // 下限 0.10m 半宽（0.20m 宽）：退化碰撞体（触发器/占位盒）会让布局把几件货
-                    // 叠到同一个坐标上，推行时互相顶飞。宁可多占一点板面，也不能叠放。
                     return Mathf.Max(width * 0.5f, 0.1f);
                 }
             }
@@ -641,7 +614,6 @@ namespace ScavengeNightmare.Cart
             return Mathf.Max(Mathf.Max(size.x, size.z) * 0.5f, 0.1f);
         }
 
-        /// <summary>布局用半宽：优先用装载瞬间记下的值，没有记录（理论上不该发生）才回落实时测量。</summary>
         private float HalfWidthAtLoad(GrabbableProp prop)
         {
             if (prop != null && loadHalfWidth.TryGetValue(prop, out float width))
@@ -667,7 +639,6 @@ namespace ScavengeNightmare.Cart
             return false;
         }
 
-        /// <summary>清掉已经不在板上的尺寸记录（掉落、卸货、整车提交都会让记录变幽灵）。</summary>
         private void PruneLoadWidths()
         {
             if (loadHalfWidth.Count == 0)
@@ -708,6 +679,10 @@ namespace ScavengeNightmare.Cart
                     return;
                 }
 
+                // 修复 BUG-CART-03：折叠前必须先释放推行者状态
+                ReleasePusher();
+                ReleaseCarrier();
+
                 stateInt = (int)CartState.Carried;
                 carrier = motor;
                 grab?.SetHandsBusy(true);
@@ -718,32 +693,47 @@ namespace ScavengeNightmare.Cart
                     body.velocity = Vector3.zero;
                 }
 
+                SetSolidCollidersEnabled(false);
+
                 Debug.Log($"[S4A] S4A_CART_FOLD state=Carried carrier={motor.netId} handsBusy=True");
                 return;
             }
 
             if (State == CartState.Carried)
             {
-                stateInt = (int)CartState.Deployed;
-                carrier = null;
-                grab?.SetHandsBusy(false);
-
-                if (body != null)
-                {
-                    body.isKinematic = false;
-                }
-
-                if (hullCollider != null)
-                {
-                    hullCollider.enabled = true;
-                }
-
-                stallAnchor = transform.position;
-                stallCount = 0;
-                stalled = false;
-
-                Debug.Log("[S4A] S4A_CART_UNFOLD state=Deployed handsBusy=False");
+                ForceUnfoldToGround();
             }
+        }
+
+        private void ForceUnfoldToGround()
+        {
+            stateInt = (int)CartState.Deployed;
+            ReleaseCarrier();
+
+            if (body != null)
+            {
+                body.isKinematic = false;
+            }
+
+            SetSolidCollidersEnabled(true);
+
+            stallAnchor = transform.position;
+            stallCount = 0;
+            stalled = false;
+
+            Debug.Log("[S4A] S4A_CART_UNFOLD state=Deployed handsBusy=False");
+        }
+
+        private void ReleaseCarrier()
+        {
+            if (carrier == null)
+            {
+                return;
+            }
+
+            GrabController carrierGrab = carrier.GetComponent<GrabController>();
+            carrierGrab?.SetHandsBusy(false);
+            carrier = null;
         }
 
         private void Unstick(PlayerMotor motor)
@@ -752,7 +742,6 @@ namespace ScavengeNightmare.Cart
             Vector3 point = origin;
             bool found = false;
 
-            // 在玩家身后 3m 内向四周采样找合法地面点：直接瞬移到原点可能落在墙里或悬空
             for (float r = 0f; r <= profile.unstickMaxDistance && !found; r += 0.5f)
             {
                 for (int a = 0; a < 8 && !found; a++)
@@ -774,15 +763,13 @@ namespace ScavengeNightmare.Cart
                 return;
             }
 
-            body.position = point + Vector3.up * 0.25f;
-            body.velocity = Vector3.zero;
-            body.angularVelocity = Vector3.zero;
+            TeleportWithCargo(point + Vector3.up * 0.25f);
 
             NoiseBus.Report("cart_unstick", profile.unstickNoise, body.position);
             unstickReadyAt = Time.unscaledTime + profile.unstickCooldownSeconds;
 
             ReportStallEnd("unstick");
-            Debug.Log($"[S4A] S4A_CART_UNSTICK at=({point.x:F2},{point.z:F2}) cooldown={profile.unstickCooldownSeconds}s noise=+{profile.unstickNoise}");
+            Debug.Log($"[S4A] S4A_CART_UNSTICK at=({point.x:F2},{point.z:F2}) cooldown={profile.unstickCooldownSeconds:F0}s");
         }
 
         private void ReleasePusher()
@@ -805,11 +792,6 @@ namespace ScavengeNightmare.Cart
             pushSpeedCap = -1f;
         }
 
-        /// <summary>
-        /// 找正在推车的玩家：**靠近 + 按住左键**两条同时满足才算。
-        /// 只按靠近就推会让玩家没有参与感，也不符合抓握的肌肉记忆；
-        /// 而只按左键不看距离又会出现隔空推车。
-        /// </summary>
         private PlayerMotor FindPusher(float reach)
         {
             PlayerMotor best = null;
@@ -817,7 +799,7 @@ namespace ScavengeNightmare.Cart
 
             foreach (PlayerMotor motor in Players())
             {
-                if (motor == null)
+                if (motor == null || motor.VitalsDowned)
                 {
                     continue;
                 }
@@ -828,8 +810,6 @@ namespace ScavengeNightmare.Cart
                     continue;
                 }
 
-                // 用水平距离判定：把 y 算进去的话，玩家站在稍高/稍低的地面就会超出把手范围，
-                // 推行判定直接失效（实测抬高 0.85m 后距离 1.64m > reach 1.6m，车速归零）。
                 Vector3 a = motor.transform.position;
                 Vector3 b = transform.position;
                 a.y = 0f;
@@ -851,10 +831,6 @@ namespace ScavengeNightmare.Cart
             return best;
         }
 
-        /// <summary>
-        /// 玩家列表 0.25s 缓存。A12 性能是 P0 的阻断项，推行与交互都在每帧跑，
-        /// 不能每帧做一次整表分配（D12 的公秤已经因为同样的问题改过一次）。
-        /// </summary>
         private PlayerMotor[] Players()
         {
             if (playerCache != null && Time.unscaledTime < nextPlayerRefresh)
@@ -867,11 +843,6 @@ namespace ScavengeNightmare.Cart
             return playerCache;
         }
 
-        /// <summary>
-        /// 自动化专用：瞬移推车，并让车上货物跟着一起走。
-        /// 正式玩法里不存在「车瞬移」，这只是为了让 -s4acart 能一步把车挪到公秤停车位。
-        /// 不带上货的话，下一帧的水平锚点约束会把货从几十米外硬拽回来，中途被判成滑落。
-        /// </summary>
         [Server]
         public void TeleportWithCargo(Vector3 position)
         {
@@ -904,18 +875,17 @@ namespace ScavengeNightmare.Cart
             Debug.Log($"[S4A] S4A_CART_TELEPORT to=({position.x:F1},{position.z:F1}) cargo={(cargo != null ? cargo.Count : 0)}");
         }
 
-        /// <summary>停车位触发区调用（服务端）。</summary>
         [Server]
         public void SetParked(bool value)
         {
             parked = value;
         }
 
-        /// <summary>整车卸货，交给公秤入账。返回卸下的货物。</summary>
         [Server]
         public List<GrabbableProp> UnloadAll()
         {
             List<GrabbableProp> removed = cargo.UnloadAll();
+            loadHalfWidth.Clear();
             loadKg = 0f;
             itemCount = 0;
             return removed;

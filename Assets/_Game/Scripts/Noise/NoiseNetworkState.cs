@@ -4,11 +4,8 @@ using UnityEngine;
 namespace ScavengeNightmare.Noise
 {
     /// <summary>
-    /// 噪音 HUD 的服务端真值桥（A9）：等级/主要来源/声源位置的 5Hz SyncVar。
-    /// HUD 与怪物 AI 必须读同一份数据，否则「玩家看到的来源」和「怪物追的来源」会分家。
-    ///
-    /// 同时它负责服务端的噪音自然衰减：4A 的 NoiseBus 只有测试会手动 Decay，
-    /// 没有逐帧衰减时记忆永不遗忘，怪物会一直追一条早就结束的噪音。
+    /// 噪音 HUD 的服务端真值桥 V2 升级版：
+    /// 修复 OnStartServer 未设置 Instance = this 导致纯服务端 (Headless) 读取 Instance 为 null 的 Bug。
     /// </summary>
     public sealed class NoiseNetworkState : NetworkBehaviour
     {
@@ -26,9 +23,15 @@ namespace ScavengeNightmare.Noise
         public Vector3 SourcePosition => sourcePosition;
         public string Band => band;
 
+        private void Awake()
+        {
+            Instance = this;
+        }
+
         public override void OnStartServer()
         {
             base.OnStartServer();
+            Instance = this;
             level = NoiseBus.Level;
             source = NoiseBus.TopSource;
             sourcePosition = NoiseBus.TopSourcePosition;

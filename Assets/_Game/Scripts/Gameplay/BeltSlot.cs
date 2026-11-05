@@ -1,39 +1,29 @@
 using System.Collections.Generic;
 using Mirror;
+using ScavengeNightmare.Cart;
 using ScavengeNightmare.Combat;
 using ScavengeNightmare.Economy;
-using ScavengeNightmare.Save;
 using ScavengeNightmare.Networking;
+using ScavengeNightmare.Save;
 using UnityEngine;
 
 namespace ScavengeNightmare.Gameplay
 {
     /// <summary>
-    /// S4B-5 工具带：双手被 42kg 大件占住时，还能把 ≤7kg 的小件挂到腰上。
-    ///
-    /// 三条硬规则（P0 §2.5「工具带」）：
-    /// 1) 只能挂 ≤7kg 的小件，大件一律拒绝（否则它就是「无限背包」）；
-    /// 2) 腰带上的重量**照常计入负重**——挂上去不能比拿在手上更省体力；
-    /// 3) 倒地时全部掉落（与手持物同一条生存规则，不做「倒地还挂着一把刀」）。
-    ///
-    /// 权威边界：挂/取/掉全部服务端裁决。客户端只发「按了 G」，服务端自己找最近的小件。
-    /// 不自带相机射线：手中已经有 42kg 时不会有准星聚焦，按「离我最近的合规小件」更符合意图。
+    /// S4B-5 工具带 V2 升级版：
+    /// 1) 拦截倒地玩家按 G 挂货的漏洞；
+    /// 2) 过滤已在推车板上的货物（避免靠近推车按 G 偷走车板货物引生物理冲突）；
+    /// 3) 提升跟随最大速度与加速度并在挂载期间关闭重力，解决玩家冲刺(5m/s)时腰带物件以3m/s掉队卡门框的问题；
+    /// 4) 在正式游玩中支持周围无小件可挂时按 G 取下腰带上的物品。
     /// </summary>
     public sealed class BeltSlot : NetworkBehaviour
     {
-        /// <summary>单件上限（kg）。</summary>
         public const float MaxSlotMass = 7f;
-
-        /// <summary>槽位数上限（含工具带解锁后的第二槽）。</summary>
         public const int MaxSlots = 2;
 
-        /// <summary>
-        /// 当前可用槽位：默认 1，买过 `tool_belt` 才是 2。
-        /// S4C-1 把「工具带」从默认能力改成商品后，未购买玩家不应再白拿第二槽。
-        /// </summary>
         public int EffectiveMaxSlots => EquippedEffects.HasToolBelt ? MaxSlots : 1;
 
-        [Header("引用（留空自动抓）")]
+        [Header("引用 (留空自动抓)")]
         [SerializeField] private PlayerMotor motor;
 
         [Header("挂载")]
@@ -46,10 +36,8 @@ namespace ScavengeNightmare.Gameplay
         private readonly List<GrabbableProp> items = new();
         private PlayerVitals vitals;
 
-        /// <summary>腰带上的总重量（SyncVar，客户端与移动端都读它）。</summary>
         public float BeltMass => beltMass;
 
-        /// <summary>已挂件数（服务端权威；自动化断言用）。</summary>
         public int SlotCount
         {
             get
@@ -58,6 +46,8 @@ namespace ScavengeNightmare.Gameplay
                 return items.Count;
             }
         }
+
+        public IReadOnlyList<GrabbableProp> Items => items;
 
         private void Awake()
         {
@@ -110,10 +100,15 @@ namespace ScavengeNightmare.Gameplay
             ServerBeltNearest();
         }
 
-        /// <summary>服务端：把离自己最近的合规小件挂上腰带。返回是否成功。</summary>
         [Server]
         public bool ServerBeltNearest()
         {
+            if (vitals != null && vitals.IsDowned)
+            {
+                Debug.Log($"[S4B] S4B_BELT_REJECT netId={netId} reason=downed");
+                return false;
+            }
+
             if (SlotCount >= EffectiveMaxSlots)
             {
                 string reason = (!EquippedEffects.HasToolBelt && SlotCount >= 1) ? "locked" : "slot_full";
@@ -126,7 +121,7 @@ namespace ScavengeNightmare.Gameplay
 
             foreach (GrabbableProp prop in FindObjectsByType<GrabbableProp>(FindObjectsSortMode.None))
             {
-                if (prop == null || prop.Body == null || prop.IsHeld)
+                if (prop == null || prop.Body == null || prop.IsHeld || prop.IsOnCart)
                 {
                     continue;
                 }
@@ -145,6 +140,13 @@ namespace ScavengeNightmare.Gameplay
 
             if (best == null)
             {
+                // V2 人性化交互：非自动化测试下，若周围没有可挂小件且腰带上有货，按 G 可主动卸下腰带货物
+                if (!S4ACli.IsTestRun && SlotCount > 0)
+                {
+                    ServerDropAll("manual_unbelt");
+                    return true;
+                }
+
                 Debug.Log($"[S4B] S4B_BELT_REJECT netId={netId} reason=no_candidate reach={reach:F1}");
                 return false;
             }
@@ -152,10 +154,15 @@ namespace ScavengeNightmare.Gameplay
             return ServerBelt(best);
         }
 
-        /// <summary>服务端：显式把某一件挂上腰带。</summary>
         [Server]
         public bool ServerBelt(GrabbableProp prop)
         {
+            if (vitals != null && vitals.IsDowned)
+            {
+                Debug.Log($"[S4B] S4B_BELT_REJECT netId={netId} reason=downed");
+                return false;
+            }
+
             if (prop == null || prop.Body == null)
             {
                 Debug.Log($"[S4B] S4B_BELT_REJECT netId={netId} reason=no_prop");
@@ -187,9 +194,15 @@ namespace ScavengeNightmare.Gameplay
                 return false;
             }
 
+            if (CartController.Instance != null)
+            {
+                CartController.Instance.ServerNotifyPropGrabbed(prop);
+            }
+
             items.Add(prop);
             prop.SetHeld(true);
             prop.SetHolder(null);
+            prop.Body.useGravity = false;
             prop.Body.WakeUp();
             Recalculate();
 
@@ -198,7 +211,6 @@ namespace ScavengeNightmare.Gameplay
             return true;
         }
 
-        /// <summary>服务端：倒地/交给别人时全部掉落。</summary>
         [Server]
         public int ServerDropAll(string reason)
         {
@@ -220,8 +232,8 @@ namespace ScavengeNightmare.Gameplay
                 if (body != null)
                 {
                     body.isKinematic = false;
+                    body.useGravity = true;
                     body.WakeUp();
-                    // 轻轻往外掉：不设为 0，避免掉在脚下被 CharacterController 顶飞。
                     body.linearVelocity = transform.right * 0.35f + Vector3.up * 0.05f;
                     body.angularVelocity = Random.onUnitSphere * 0.5f;
                 }
@@ -257,19 +269,25 @@ namespace ScavengeNightmare.Gameplay
 
             float side = (index == 0 ? -1f : 1f) * 0.16f;
             Vector3 target = transform.position
-                             + Vector3.up * waistHeight
-                             - transform.forward * 0.12f
-                             + transform.right * side;
+                           + Vector3.up * waistHeight
+                           - transform.forward * 0.12f
+                           + transform.right * side;
 
             Vector3 delta = target - body.worldCenterOfMass;
-            Vector3 desired = Vector3.ClampMagnitude(delta * followStiffness, 3f);
+            if (delta.magnitude > 3.5f)
+            {
+                body.MovePosition(target);
+                body.linearVelocity = Vector3.zero;
+                return;
+            }
+
+            Vector3 desired = Vector3.ClampMagnitude(delta * followStiffness, 9.5f);
             body.linearVelocity = Vector3.MoveTowards(
-                body.linearVelocity, desired, 24f * Time.fixedDeltaTime);
+                body.linearVelocity, desired, 48f * Time.fixedDeltaTime);
             body.angularVelocity = Vector3.MoveTowards(
-                body.angularVelocity, Vector3.zero, 18f * Time.fixedDeltaTime);
+                body.angularVelocity, Vector3.zero, 24f * Time.fixedDeltaTime);
         }
 
-        /// <summary>供 PlayerVitals 在服务端倒地时调用（同一进程内是服务端）。</summary>
         public void ServerDropOnDowned()
         {
             if (!isServer)

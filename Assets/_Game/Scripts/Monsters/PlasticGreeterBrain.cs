@@ -1,20 +1,14 @@
 using ScavengeNightmare.Combat;
+using ScavengeNightmare.Networking;
 using ScavengeNightmare.Noise;
 using UnityEngine;
 
 namespace ScavengeNightmare.Monsters
 {
     /// <summary>
-    /// 塑料导购（S4B-3）：按「被注视」而不是「看见玩家」驱动。
-    ///
-    /// 规则（服务端权威）：
-    /// - 任一存活玩家在 25° / 18m / 无遮挡内注视它 → 原地僵住，位移恒为 0；
-    /// - 全部移开视线 → 0.35s 前摇 → 0.8s 内突进 &gt;2m；
-    /// - 突进撞墙 → 僵直 1.5s；
-    /// - 命中 30 伤害；不可击杀（4B 没有击杀系统）。
-    ///
-    /// 它和空眼的差别是本类完全接管 tick：基类的听觉/视觉状态机对它不生效，
-    /// 但手电与推车击退仍由基类统一处理（导购可以被车撞开）。
+    /// 塑料导购 V2 升级版：
+    /// 1) 修复 IsWatchedBy 忽略玩家相机俯仰角 (ViewPitchDeg) 导致低头看地板/抬头看天花板仍算注视的 Bug (AI-01)；
+    /// 2) 同步 syncWindingUp 到远端客户端，使所有客户端都能看到突进前摇的高频脉冲预警 (AI-02)。
     /// </summary>
     public sealed class PlasticGreeterBrain : MonsterBrain
     {
@@ -35,10 +29,9 @@ namespace ScavengeNightmare.Monsters
         public uint WatchedMask => watchedMask;
         public int DashCount => dashCount;
         public int WallStunCount => wallStunCount;
-        public override bool IsWindingUp => windupAt >= 0f;
+        public override bool IsWindingUp => syncWindingUp || windupAt >= 0f;
 
         protected override string MonsterId => "plastic_greeter";
-
         protected override bool HasCustomTick => true;
 
         protected override void CustomTick(float deltaTime, float now, PlayerVitals seen, AudibleNoise heard)
@@ -56,6 +49,7 @@ namespace ScavengeNightmare.Monsters
 
                 case MonsterState.Stunned:
                     navigator.Stop();
+                    syncWindingUp = false;
                     if (now >= stunUntil)
                     {
                         EnterState(MonsterState.Patrol);
@@ -88,6 +82,7 @@ namespace ScavengeNightmare.Monsters
             if (windupAt < 0f)
             {
                 windupAt = now;
+                syncWindingUp = true;
             }
 
             float windup = profile != null ? profile.greeterWindupSeconds : 0.35f;
@@ -106,6 +101,7 @@ namespace ScavengeNightmare.Monsters
             dashing = false;
             wallStall = 0f;
             windupAt = -1f;
+            syncWindingUp = false;
 
             if (State != MonsterState.Patrol)
             {
@@ -121,20 +117,19 @@ namespace ScavengeNightmare.Monsters
             if (target == null)
             {
                 windupAt = -1f;
+                syncWindingUp = false;
                 return;
             }
 
-            // 走基类入口：追逐预算由 MonsterDirector 统一裁决，导购不享受例外。
             EnterChase(target, $"sight:{target.netId}", target.transform.position);
             if (State != MonsterState.Chase)
             {
-                // 预算拒绝：留在原地，下一轮前摇再试一次（GATE_MON_BUDGET 已由 Director 打过）。
                 windupAt = now;
                 return;
             }
 
             targetVitals = target;
-
+            syncWindingUp = false;
             dashing = true;
             dashHit = false;
             wallStall = 0f;
@@ -143,8 +138,8 @@ namespace ScavengeNightmare.Monsters
             dashCount++;
 
             Debug.Log($"[S4B] GATE_GREETER_DASH monster={DisplayId} target={target.netId} " +
-                      $"from=({transform.position.x:F1},{transform.position.z:F1}) " +
-                      $"to=({dashTarget.x:F1},{dashTarget.z:F1}) seconds={(dashUntil - now):F2}");
+                $"from=({transform.position.x:F1},{transform.position.z:F1}) " +
+                $"to=({dashTarget.x:F1},{dashTarget.z:F1}) seconds={(dashUntil - now):F2}");
         }
 
         private void TickDash(float deltaTime, float now)
@@ -192,11 +187,12 @@ namespace ScavengeNightmare.Monsters
             dashing = false;
             wallStall = 0f;
             windupAt = -1f;
+            syncWindingUp = false;
             wallStunCount++;
 
             float seconds = profile != null ? profile.greeterWallStunSeconds : 1.5f;
             Debug.Log($"[S4B] GATE_GREETER_WALL monster={DisplayId} seconds={seconds:F1} " +
-                      $"at=({transform.position.x:F1},{transform.position.z:F1})");
+                $"at=({transform.position.x:F1},{transform.position.z:F1})");
 
             ServerStun(seconds, "wall");
         }
@@ -206,14 +202,11 @@ namespace ScavengeNightmare.Monsters
             dashing = false;
             wallStall = 0f;
             windupAt = -1f;
+            syncWindingUp = false;
             EnterState(MonsterState.Patrol);
             Debug.Log($"[S4B] GATE_GREETER_DASH_END monster={DisplayId} at=({transform.position.x:F1},{transform.position.z:F1})");
         }
 
-        /// <summary>
-        /// 4 人时每端一位：按 PlayerVitals.All 的服务端顺序置位。
-        /// 位掩码只用于日志与验收，不做网络同步——注视判定本身不参与任何玩法结算。
-        /// </summary>
         private uint ComputeWatchedMask()
         {
             uint mask = 0;
@@ -248,6 +241,13 @@ namespace ScavengeNightmare.Monsters
             Vector3 delta = monsterChest - playerEye;
 
             if (delta.sqrMagnitude < 0.0001f || delta.magnitude > range)
+            {
+                return false;
+            }
+
+            // 修复 AI-01：校验玩家相机俯仰角，低头看地板或抬头看天花板超过 50° 时不再算注视导购
+            PlayerMotor motor = player.GetComponent<PlayerMotor>();
+            if (motor != null && Mathf.Abs(motor.ViewPitchDeg) > 50f)
             {
                 return false;
             }

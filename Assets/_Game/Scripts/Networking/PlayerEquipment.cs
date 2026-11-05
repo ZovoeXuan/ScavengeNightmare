@@ -1,40 +1,48 @@
 using Mirror;
+using ScavengeNightmare.Combat;
 using ScavengeNightmare.Economy;
 using UnityEngine;
 
 namespace ScavengeNightmare.Networking
 {
     /// <summary>
-    /// 手电筒（4A 四件商品之一）。
-    ///
-    /// 开关走 Command + SyncVar，而不是「客户端自己切」：不权威的开关在四人局里会出现
-    /// 「我看着开了、队友那边全黑」。灯光本体是本地生成的 SpotLight —— 它纯视觉、
-    /// 不参与任何判定，所以不需要 SyncTransform。
+    /// 手电筒 V2 升级版：
+    /// 1) 修复 Update() 在 EnsureSpot() 之前 return 导致远端队友的手电筒在本地永远不发光 (NET-01)；
+    /// 2) 远端玩家的手电筒根据同步的 ViewPitchDeg 实时俯仰旋转，四人联机可见真实光柱朝向；
+    /// 3) 服务端 CmdToggleLight 校验手电筒所有权与倒地状态，并提供 ServerForceLightOff()。
     /// </summary>
     public sealed class PlayerEquipment : NetworkBehaviour
     {
         [SyncVar] private bool lightOn;
 
         private Light spot;
-        private float nextCheck;
+        private PlayerMotor motor;
+        private PlayerVitals vitals;
         private bool lastHadFlashlight;
 
         public bool LightOn => lightOn;
 
-        /// <summary>给自动化读：本地是否真的有一盏亮着的灯。</summary>
         public bool SpotActive => spot != null && spot.enabled && spot.gameObject.activeInHierarchy;
+
+        private void Awake()
+        {
+            motor = GetComponent<PlayerMotor>();
+            vitals = GetComponent<PlayerVitals>();
+        }
 
         private void Update()
         {
+            // 修复 NET-01：无论是本地玩家还是远端队友，都必须实例化并同步聚光灯组件
+            EnsureSpot();
+
             if (!isLocalPlayer)
             {
                 return;
             }
 
             SyncFlashlightOwnership();
-            EnsureSpot();
 
-            if (!EquippedEffects.HasFlashlight)
+            if (!EquippedEffects.HasFlashlight || (vitals != null && vitals.IsDowned))
             {
                 return;
             }
@@ -59,10 +67,6 @@ namespace ScavengeNightmare.Networking
             }
         }
 
-        /// <summary>
-        /// 商品被撤销后灯必须灭。OwnedMask 是 SyncVar，所有权变化在客户端可见，
-        /// 所以这一条不需要额外 RPC。
-        /// </summary>
         private void SyncFlashlightOwnership()
         {
             bool has = EquippedEffects.HasFlashlight;
@@ -88,8 +92,24 @@ namespace ScavengeNightmare.Networking
         [Command]
         private void CmdToggleLight(bool on)
         {
+            if (on && (!EquippedEffects.HasFlashlight || (vitals != null && vitals.IsDowned)))
+            {
+                lightOn = false;
+                return;
+            }
+
             lightOn = on;
             Debug.Log($"[S4A] S4A_FLASHLIGHT on={on} netId={netId}");
+        }
+
+        [Server]
+        public void ServerForceLightOff()
+        {
+            if (lightOn)
+            {
+                lightOn = false;
+                Debug.Log($"[S4A] S4A_FLASHLIGHT on=False netId={netId} reason=downed");
+            }
         }
 
         private void EnsureSpot()
@@ -108,13 +128,19 @@ namespace ScavengeNightmare.Networking
                 spot.shadows = LightShadows.None;
             }
 
+            if (motor != null)
+            {
+                spot.transform.localRotation = Quaternion.Euler(motor.ViewPitchDeg, 0f, 0f);
+            }
+
             float range = Mathf.Max(8f, EquippedEffects.FlashlightRange);
             if (!Mathf.Approximately(spot.range, range))
             {
                 spot.range = range;
             }
 
-            bool want = lightOn && EquippedEffects.HasFlashlight;
+            bool isDown = vitals != null && vitals.IsDowned;
+            bool want = lightOn && EquippedEffects.HasFlashlight && !isDown;
             if (spot.enabled != want)
             {
                 spot.enabled = want;

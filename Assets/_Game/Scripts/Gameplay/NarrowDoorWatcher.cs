@@ -4,9 +4,9 @@ using UnityEngine;
 namespace ScavengeNightmare.Gameplay
 {
     /// <summary>
-    /// D6 窄门卡位：门框碰撞体负责物理阻挡，本组件只负责「卡住超过阈值就给反馈」。
-    /// 判定依据是**位移**而不是速度——被抓物件在卡住时速度仍不为零（速度控制在拽它），
-    /// 但位置不动，这才是「卡住」的真实表现。
+    /// D6 窄门卡位 V2 升级版：
+    /// 1) 修复多子碰撞体物件在同一物理帧多次触发 OnTriggerStay 导致 moved 被清零误判的 Bug；
+    /// 2) 注册 NarrowZones 时乘上 lossyScale，保证缩放后的门洞范围准确。
     /// </summary>
     [RequireComponent(typeof(BoxCollider))]
     public sealed class NarrowDoorWatcher : MonoBehaviour
@@ -16,6 +16,7 @@ namespace ScavengeNightmare.Gameplay
             public Vector3 LastPosition;
             public float StuckSeconds;
             public bool Reported;
+            public int LastFixedFrame;
         }
 
         private readonly Dictionary<GrabbableProp, Tracked> tracked = new();
@@ -25,9 +26,16 @@ namespace ScavengeNightmare.Gameplay
         {
             zone = GetComponent<BoxCollider>();
             zone.isTrigger = true;
+        }
 
-            // D8「窄门恐惧」需要知道玩家是否站在门洞里：把这个区域的 AABB 登记到全局窄区表
-            Traits.NarrowZones.Register(transform, zone.size * 0.5f);
+        private void Start()
+        {
+            Vector3 s = transform.lossyScale;
+            Vector3 halfExtent = new Vector3(
+                Mathf.Abs(zone.size.x * s.x) * 0.5f,
+                Mathf.Abs(zone.size.y * s.y) * 0.5f,
+                Mathf.Abs(zone.size.z * s.z) * 0.5f);
+            Traits.NarrowZones.Register(transform, halfExtent);
         }
 
         private void OnDestroy()
@@ -48,11 +56,24 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
+            int frame = Time.frameCount;
             if (!tracked.TryGetValue(prop, out Tracked info))
             {
-                info = new Tracked { LastPosition = prop.transform.position };
+                info = new Tracked
+                {
+                    LastPosition = prop.transform.position,
+                    LastFixedFrame = frame
+                };
                 tracked[prop] = info;
+                return;
             }
+
+            if (info.LastFixedFrame == frame)
+            {
+                return;
+            }
+
+            info.LastFixedFrame = frame;
 
             float moved = (prop.transform.position - info.LastPosition).magnitude;
             info.LastPosition = prop.transform.position;

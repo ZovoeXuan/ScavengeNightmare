@@ -1,12 +1,11 @@
-using System.Collections.Generic;
 using ScavengeNightmare.Audio;
 using UnityEngine;
 
 namespace ScavengeNightmare.Gameplay
 {
     /// <summary>
-    /// D6 易碎：碰撞相对速度超过 breakSpeed 即破碎。
-    /// 用「相对速度」而不是「碰撞冲量」判定，因为 OnCollisionEnter 里的 impulse 不可靠。
+    /// D6 易碎 V2 升级版：
+    /// 修复破碎生成的纯视觉碎块带有激活 BoxCollider 导致车板内相邻易碎件连锁碎裂或卡住车轮的 Bug。
     /// </summary>
     [RequireComponent(typeof(GrabbableProp))]
     public sealed class FragileProp : MonoBehaviour
@@ -17,7 +16,6 @@ namespace ScavengeNightmare.Gameplay
 
         public bool Broken { get; private set; }
 
-        /// <summary>当前价值：碎了归零，供后续结算读取（D13 接经济系统）。</summary>
         public int CurrentValue
         {
             get
@@ -45,7 +43,6 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
-            // 服务端权威：客户端不模拟物理，只有服务端判定才准
             if (networked != null && !networked.isServer)
             {
                 return;
@@ -62,7 +59,6 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
-            // 联网时交给服务端广播，保证四端同时碎；单机则本地直接碎
             if (networked != null)
             {
                 networked.ShatterAuthoritative(collision.relativeVelocity.magnitude);
@@ -78,7 +74,6 @@ namespace ScavengeNightmare.Gameplay
             ApplyBreak(impactSpeed);
         }
 
-        /// <summary>真正的破碎表现，幂等：四端各自调用一次也不会重复生成碎块。</summary>
         public void ApplyBreak(float impactSpeed = 0f)
         {
             if (Broken)
@@ -96,7 +91,6 @@ namespace ScavengeNightmare.Gameplay
                 }
             }
 
-            // 外壳冻结在原地，避免碎渣生成后又被惯性带着飞
             if (grabbable.Body != null)
             {
                 grabbable.Body.linearVelocity = Vector3.zero;
@@ -111,11 +105,8 @@ namespace ScavengeNightmare.Gameplay
 
             SpawnFragments();
 
-            // R6 碎裂音：ApplyBreak 在四端都会走到（服务端判完走 RpcShatter），
-            // 所以这里直接播本地音，不另发 RPC。
             AudioBus.Play(AudioCue.GlassBreak, transform.position, 1f, $"speed={impactSpeed:F1}");
-
-            FrictionEvents.Report("易碎", $"{name} 碎了（{impactSpeed:F1} m/s），价值归零", 520f);
+            FrictionEvents.Report("易碎", $"{name} 碎了 ({impactSpeed:F1} m/s)，价值归零", 520f);
         }
 
         private void SpawnFragments()
@@ -129,15 +120,20 @@ namespace ScavengeNightmare.Gameplay
                 shard.transform.localScale = Vector3.one * 0.09f;
                 shard.transform.rotation = Random.rotation;
 
+                Collider shardCol = shard.GetComponent<Collider>();
+                if (shardCol != null)
+                {
+                    shardCol.enabled = false;
+                }
+
                 Rigidbody body = shard.AddComponent<Rigidbody>();
-                body.mass = 0.1f;
+                body.mass = 0.05f;
                 body.linearVelocity = Random.onUnitSphere * 2.5f + Vector3.up * 1.5f;
                 body.angularVelocity = Random.onUnitSphere * 6f;
 
                 Renderer r = shard.GetComponent<Renderer>();
                 if (r != null)
                 {
-                    // 沿用原物件颜色，让玩家一眼看出是刚才那件东西碎的
                     Material source = GetComponent<Renderer>()?.sharedMaterial;
                     if (source != null)
                     {

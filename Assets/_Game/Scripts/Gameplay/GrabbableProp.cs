@@ -6,8 +6,9 @@ using UnityEngine;
 namespace ScavengeNightmare.Gameplay
 {
     /// <summary>
-    /// D4 可抓取物件：把物理档应用到 Rigidbody，并负责准星高亮。
-    /// 物件始终保持完整物理模拟（有碰撞、会被撞飞），不做「磁吸」。
+    /// D4 可抓取物件 V2 升级版：
+    /// 1) 新增 IsOnCart 状态与双人协力抬重物 (AssistHolder) 支持；
+    /// 2) 修复运行时创建的 PhysicsMaterial 在销毁时未释放的内存泄漏。
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     public sealed class GrabbableProp : MonoBehaviour
@@ -29,19 +30,21 @@ namespace ScavengeNightmare.Gameplay
         private PhysicsMaterial runtimeSurface;
         private bool highlighted;
         private bool held;
+        private bool onCart;
 
         public PropPhysicsProfile Profile => profile;
         public Rigidbody Body => body;
         public float Mass => body != null ? body.mass : 0f;
         public bool IsHeld => held;
+        public bool IsOnCart => onCart;
 
-        /// <summary>当前持有者（谁正抓着它）。门夹等事件需要能反向让持有者脱手。</summary>
+        /// <summary>当前主持有者（谁正抓着它）。</summary>
         public GrabController Holder { get; private set; }
 
-        /// <summary>
-        /// 当前价值（D13 结算口径）：易碎件碎后必须归零，所以不能直接读 Profile.value。
-        /// 没有易碎组件时才是表里的原价。
-        /// </summary>
+        /// <summary>V2 双人协力抬重物的副持有者（协助分担 45% 重量并提升稳定性）。</summary>
+        public PlayerMotor AssistMotor { get; private set; }
+        public bool HasCoopAssist => AssistMotor != null && !AssistMotor.VitalsDowned;
+
         public int CurrentValue
         {
             get
@@ -52,8 +55,6 @@ namespace ScavengeNightmare.Gameplay
                     return fragile.CurrentValue;
                 }
 
-                // S4B-4：未封印的诅咒物按标价 60% 计价（笑面偶 510 / 无字牌位 780）。
-                // P0 不做封印，所以这个分支恒成立；没有诅咒组件时行为一行不变。
                 CursedItem cursed = GetComponent<CursedItem>();
                 if (cursed != null)
                 {
@@ -67,12 +68,22 @@ namespace ScavengeNightmare.Gameplay
         public void SetHolder(GrabController value)
         {
             Holder = value;
+            if (value == null)
+            {
+                AssistMotor = null;
+            }
         }
 
-        /// <summary>
-        /// D6 手滑砸脚：被足够快、足够重的物件撞到玩家时触发硬直。
-        /// 判定放在物件侧，因为 CharacterController 自身不会收到刚体碰撞回调。
-        /// </summary>
+        public void SetAssistMotor(PlayerMotor assistant)
+        {
+            AssistMotor = assistant;
+        }
+
+        public void SetOnCart(bool value)
+        {
+            onCart = value;
+        }
+
         private void OnCollisionEnter(Collision collision)
         {
             PlayHeavyDrop(collision);
@@ -88,7 +99,6 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
-            // 服务端权威：只有服务端判定硬直，再广播给真正要顿住的那个客户端
             if (networked != null && !networked.isServer)
             {
                 return;
@@ -111,14 +121,9 @@ namespace ScavengeNightmare.Gameplay
                 motor.Stun(seconds);
             }
 
-            FrictionEvents.Report("手滑砸脚", $"{profile.displayName} 砸中玩家（{speed:F1} m/s）硬直 {seconds:F1}s", 420f);
+            FrictionEvents.Report("手滑砸脚", $"{profile.displayName} 砸中玩家 ({speed:F1} m/s) 硬直 {seconds:F1}s", 420f);
         }
 
-        /// <summary>
-        /// R6 重物落地：≥30kg 且撞击速度 ≥1.5m/s 才响。
-        /// 联网时由服务端判定并广播（客户端物件 kinematic，收不到碰撞），
-        /// 单机时本地直接播。阈值不跟硬直表走——落地声是「听得见」，不是「砸伤」。
-        /// </summary>
         private void PlayHeavyDrop(Collision collision)
         {
             if (profile == null || profile.mass < 30f)
@@ -161,11 +166,27 @@ namespace ScavengeNightmare.Gameplay
                 }
             }
 
-            // 高速投掷不穿墙：连续检测 + 插值。
             body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             body.interpolation = RigidbodyInterpolation.Interpolate;
 
             ApplyProfile();
+        }
+
+        private void OnDestroy()
+        {
+            if (runtimeSurface != null)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(runtimeSurface);
+                }
+                else
+                {
+                    DestroyImmediate(runtimeSurface);
+                }
+
+                runtimeSurface = null;
+            }
         }
 
         public void SetProfile(PropPhysicsProfile value)
@@ -186,7 +207,6 @@ namespace ScavengeNightmare.Gameplay
                 return;
             }
 
-            // 编辑期不写运行时物理材质（它不是资产，落盘会丢），运行时 Awake 再统一应用。
             if (!Application.isPlaying)
             {
                 body.mass = Mathf.Max(0.1f, profile.mass);
@@ -197,7 +217,6 @@ namespace ScavengeNightmare.Gameplay
             body.linearDamping = profile.linearDamping;
             body.angularDamping = profile.angularDamping;
 
-            // 摩擦/弹性用运行时物理材质承载：数据表里改数值即生效，不需要维护额外资产。
             if (runtimeSurface == null)
             {
                 runtimeSurface = new PhysicsMaterial($"{profile.id}_surface");
@@ -216,6 +235,10 @@ namespace ScavengeNightmare.Gameplay
         public void SetHeld(bool value)
         {
             held = value;
+            if (!value)
+            {
+                AssistMotor = null;
+            }
         }
 
         public void SetHighlight(bool on)
@@ -254,7 +277,6 @@ namespace ScavengeNightmare.Gameplay
             }
         }
 
-        /// <summary>速度上限，作为最后一道穿模保险。</summary>
         public void ClampSpeed(float maxSpeed)
         {
             if (body == null)
